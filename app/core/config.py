@@ -37,5 +37,45 @@ class Config(BaseSettings):
     REFRESH_TOKEN_EXPIRE_MINUTES: int = 14 * 24 * 60
     JWT_LEEWAY: int = 5
 
+    # OCR
     OCR_SECRET_KEY: str = ""
     OCR_INVOKE_URL: str = ""
+
+    # 식약처 e약은요 OpenAPI (일반의약품)
+    DATA_GO_KR_API_KEY_ENCODED: str = ""
+    DATA_GO_KR_API_KEY_DECODED: str = ""
+
+    # 식약처 의약품 제품 허가정보 상세 REST API (전문의약품 포함)
+    DRUG_PRMSSN_API_KEY_ENCODED: str = ""
+    DRUG_PRMSSN_API_KEY_DECODED: str = ""
+
+    # 식품의약품안전처 의약품 제품 허가정보 (DrugPrdtPrmsnInfoService07)
+    DRUG_PRDT_PRMSN_INFO_API_KEY_ENCODED: str = ""
+    DRUG_PRDT_PRMSN_INFO_API_KEY_DECODED: str = ""
+
+    # 식품의약품안전처 의약품안전사용서비스(DUR) 품목정보 (DURPrdlstInfoService03)
+    DUR_PRDLST_INFO_API_KEY_ENCODED: str = ""
+    DUR_PRDLST_INFO_API_KEY_DECODED: str = ""
+
+    # 건강보험심사평가원 의약품사용정보조회서비스 (msupUserInfoService1.2)
+    HIRA_MSUP_USER_INFO_API_KEY_ENCODED: str = ""
+    HIRA_MSUP_USER_INFO_API_KEY_DECODED: str = ""
+
+    # 건강보험심사평가원 의약품성분약효정보조회서비스 (msupCmpnMeftInfoService)
+    HIRA_MSUP_CMPN_MEFT_INFO_API_KEY_ENCODED: str = ""
+    HIRA_MSUP_CMPN_MEFT_INFO_API_KEY_DECODED: str = ""
+
+    # 프론트 LLM (GPT-4o-mini — 채팅 응답)
+    OPENAI_API_KEY: str = ""
+    OPENAI_MODEL: str = "gpt-4o-mini"
+    OPENAI_MAX_TOKENS: int = 1024
+    OPENAI_TEMPERATURE: float = 0.3
+
+    # 백엔드 LLM (GLM-5 — RAG reasoning/agent)
+    GLM_API_KEY: str = ""
+    GLM_BASE_URL: str = "https://api.kilo.ai/api/gateway"
+    GLM_MODEL: str = "z-ai/glm-5"
+    GLM_MAX_TOKENS: int = 2048
+    GLM_TEMPERATURE: float = 0.3
+
+    RAG_CONFIDENCE_THRESHOLD: float = 0.45
