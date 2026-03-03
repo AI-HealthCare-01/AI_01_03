@@ -48,12 +48,26 @@ git push -u origin 본인이름/작업내용
     ```bash
     git branch -a
     ```
-*   **작업 완료 후, 변경 사항 커밋 및 푸시하는 방법:**
-    ```bash
-    git add .
-    git commit -m "작업 내용 설명 (예: LLM 가이드 파트 초안 작성)"
-    git push
-    ```
+*   **작업 완료 후 GitHub에 반영하기 (Commit & Push - 이연희님 예시):**
+    
+    작업을 마치고 코드를 안전하게 저장(Commit)한 뒤, 원격 저장소(GitHub)상단에 올리는(Push) 방법입니다. **연희님의 `yeonhee/ocr` 브랜치 작업 상황을 예시**로 단계별로 차근차근 설명합니다.
+
+    1. **내 브랜치에 제대로 위치해 있는지 확인하기** (`yeonhee/ocr` 앞에 `*`가 있어야 합니다.)
+        ```bash
+        git branch
+        ```
+    2. **변경된 파일들을 모두 업데이트할 준비(Staging)를 합니다:**
+        ```bash
+        git add .
+        ```
+    3. **이번에 어떤 작업을 했는지 다른 팀원도 알기 쉽게 메모(메시지)를 남깁니다:**
+        ```bash
+        git commit -m "feat: OCR 정규식 파싱 등급 분류 로직 추가 및 DB 연동 준비"
+        ```
+    4. **마지막으로 내 컴퓨터의 작업 내역을 GitHub 원격 저장소의 내 브랜치 공간으로 밀어 올립니다:**
+        ```bash
+        git push origin yeonhee/ocr
+        ```
 
 ---
 팀원 여러분 모두 화이팅입니다! 궁금한 점이 있다면 언제든 공유해주세요.
