@@ -21,7 +21,7 @@ git pull origin master
 
 *   예시 (빛나 - LLM 파트 작업): `binna/llm`
 *   예시 (이연희 - OCR 파트 작업): `yeonhee/ocr`
-*   예시 (문운서 - 파트 작업): `woonseo/...` 
+*   예시 (운서 - 파트 작업): `woonseo/...` 
 *   예시 (효원 - 비전 API 작업): `hyowon/vision-api`
 
 ```bash
