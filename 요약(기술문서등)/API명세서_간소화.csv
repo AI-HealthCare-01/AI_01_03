@@ -1,0 +1,31 @@
+Endpoint,버전,Method,설명,요청데이터,응답데이터,에러코드,담당자,상태
+/api/v1/accounts/signup,V1,POST,회원가입,email / password / nickname / name / birthday / gender / email_token / sms_token,user_id / email / nickname / created_at,201 Created / 400 Bad Request / 401 Unauthorized / 409 Conflict,,대기중
+/api/v1/accounts/login,V1,POST,로그인,email / password,access_token / refresh_token / user_id / email,200 OK / 400 Bad Request / 401 Unauthorized,,대기중
+/api/v1/accounts/token/refresh,V1,POST,토큰갱신,refresh_token,access_token / expires_at,200 OK / 401 Unauthorized,,대기중
+/api/v1/accounts/logout,V1,POST,로그아웃,없음,message,200 OK / 401 Unauthorized,,대기중
+/api/v1/auth/google/login,V1,GET,구글 소셜 로그인 시작,redirect_uri (선택),구글 OAuth 페이지로 리다이렉트,302 Redirect,,대기중
+/api/v1/auth/google/callback,V1,GET,구글 소셜 로그인 콜백,code / state (선택),access_token / refresh_token / user_id / email / name / profile_image / is_new_user,200 OK / 400 Bad Request / 401 Unauthorized,,대기중
+/api/v1/auth/kakao/login,V1,GET,카카오 소셜 로그인 시작,redirect_uri (선택),카카오 OAuth 페이지로 리다이렉트,302 Redirect,,대기중
+/api/v1/auth/kakao/callback,V1,GET,카카오 소셜 로그인 콜백,code,access_token / refresh_token / user_id / email / nickname / profile_image / is_new_user,200 OK / 400 Bad Request / 401 Unauthorized,,대기중
+/api/v1/profile,V1,POST,프로필등록,diseases / allergies / medications,profile_id / created_at,201 Created / 400 Bad Request / 401 Unauthorized,,대기중
+/api/v1/profile,V1,GET,프로필조회,없음,profile_id / diseases / allergies / medications / updated_at,200 OK / 401 Unauthorized / 404 Not Found,,대기중
+/api/v1/profile,V1,PUT,프로필수정,diseases / allergies / medications,profile_id / updated_at,200 OK / 400 Bad Request / 401 Unauthorized,,대기중
+/api/v1/profile,V1,DELETE,프로필삭제,없음,message,204 No Content / 401 Unauthorized / 404 Not Found,,대기중
+/api/v1/vision/identify,V1,POST,알약인식,image,pill_name / ingredients / confidence / classification,200 OK / 400 Bad Request,,대기중
+/api/v1/vision/history,V1,GET,알약인식이력,없음,items / pagination,200 OK / 401 Unauthorized,,대기중
+/api/v1/ocr/prescription,V1,POST,처방전OCR,image,medications / dosage / frequency / notes,200 OK / 400 Bad Request,,대기중
+/api/v1/prescriptions,V1,POST,처방전업로드,image / ocr_result,prescription_id / image_url / created_at,201 Created / 400 Bad Request / 401 Unauthorized,,대기중
+/api/v1/prescriptions,V1,GET,처방전목록,없음,items / pagination,200 OK / 401 Unauthorized,,대기중
+/api/v1/prescriptions/{id},V1,GET,처방전상세,없음,prescription_id / image_url / medications / status / created_at,200 OK / 401 Unauthorized / 404 Not Found,,대기중
+/api/v1/prescriptions/{id},V1,DELETE,처방전삭제,없음,message,204 No Content / 401 Unauthorized / 404 Not Found,,대기중
+/api/v1/guide/generate,V1,POST,가이드생성,medications / profile,guide_text / precautions / lifestyle_tips,200 OK / 400 Bad Request / 401 Unauthorized,,대기중
+/api/v1/guide/translate,V1,POST,용어번역,medical_term,translated_text / original_term,200 OK / 400 Bad Request,,대기중
+/api/v1/chatbot/query,V1,POST,챗봇질문,question,answer / sources / confidence,200 OK / 401 Unauthorized,,대기중
+/api/v1/chatbot/history,V1,GET,챗봇이력,없음,items / pagination,200 OK / 401 Unauthorized,,대기중
+/api/v1/notifications,V1,POST,알림생성,medication_id / schedule,notification_id / created_at,201 Created / 400 Bad Request / 401 Unauthorized,,대기중
+/api/v1/notifications,V1,GET,알림목록,없음,items / pagination,200 OK / 401 Unauthorized,,대기중
+/api/v1/notifications/{id},V1,PUT,알림수정,schedule,notification_id / updated_at,200 OK / 400 Bad Request / 401 Unauthorized,,대기중
+/api/v1/notifications/{id},V1,DELETE,알림삭제,없음,message,204 No Content / 401 Unauthorized,,대기중
+/api/v1/medication-history,V1,GET,복약이력,없음,items / pagination,200 OK / 401 Unauthorized,,대기중
+/api/v1/medication-history/{id},V1,GET,이력상세,없음,history_id / medication / taken_at / status,200 OK / 401 Unauthorized / 404 Not Found,,대기중
+/api/v1/compliance/report,V1,GET,순응도리포트,없음,compliance_rate / weekly_data / monthly_data,200 OK / 401 Unauthorized,,대기중

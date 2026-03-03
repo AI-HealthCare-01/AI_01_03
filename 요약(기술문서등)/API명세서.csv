@@ -1,0 +1,62 @@
+API 버전,Endpoint,HTTP Method,API 설명,Header Schema,Header Example,Query Parameter Schema,Query Parameter Example,Request Body Schema,Request Body Example,Success Response Schema,Success Response Example,Error Response Schema,Error Response Example,Status Code,담당자,완료 상태
+V1,api/v1/accounts/signup,POST,회원가입 API,,,,,"{
+  ""password"": {
+      type: str,
+      required: true,
+  },
+  ""nickname"": {
+      type: str,
+      required: true,
+  },
+  ""name"": {
+      type: str,
+      required: true,
+  },
+  ""birthday"": {
+      type: date,
+      format: ""YYYY-MM-DD"",
+      required: true,
+  },
+  ""gender"": {
+      type: enum(""M"", ""F""),
+      required: true,
+  },
+  ""email_token"": {
+      type: str,
+      required: true,
+  },
+  ""sms_token"": {
+      type: str,
+      required: true,
+  },
+}
+","{
+  ""password"": ""Password1234@"",
+  ""nickname"": ""김유저"",
+  ""name"": ""홍길동"",
+  ""birthday"": ""2025-11-20"",
+  ""gender"": ""M"",
+  ""email_token"": ""saddfj2h4u81478ssxzcv"",
+  ""sms_token"": ""24yuicdfhduf128924hv"",
+}
+","201: {
+    ""detail"": str
+}","201: {
+    ""detail"": ""회원가입이 완료되었습니다.""
+}","400: {
+      ""field_name"": str
+}
+
+409: {
+    ""error_detail"": str
+}","400: {
+    ""nickname"": ""이 필드는 필수 항목입니다.""
+}
+
+409: {
+    ""error_detail"": ""이미 중복된 회원가입 내역이 존재합니다.""
+}","{
+    201: Created,
+    409: Conflict,
+    400: Bad Request,
+}",,대기중
