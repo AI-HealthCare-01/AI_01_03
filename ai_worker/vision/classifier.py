@@ -2,14 +2,12 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Dict, Tuple
 
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
+import torch.nn.functional as f
 from PIL import Image
 from torchvision import models, transforms
-
 
 # ====== 경로(프로젝트 루트 기준) ======
 # 가중치/매핑 파일을 어디에 둘지 팀 규칙에 맞춰 조정 가능
@@ -38,13 +36,13 @@ class VisionClassifier:
         self.device = device or ("cuda" if torch.cuda.is_available() else "cpu")
 
         # class_to_idx
-        class_to_idx: Dict[str, int] = json.loads(CLASS_TO_IDX_PATH.read_text(encoding="utf-8"))
-        self.idx_to_itemseq: Dict[int, str] = {v: k for k, v in class_to_idx.items()}
+        class_to_idx: dict[str, int] = json.loads(CLASS_TO_IDX_PATH.read_text(encoding="utf-8"))
+        self.idx_to_itemseq: dict[int, str] = {v: k for k, v in class_to_idx.items()}
         self.num_classes = len(self.idx_to_itemseq)
 
         # itemseq -> medication_id (없으면 ITEMSEQ_ 규칙으로 fallback)
         if ITEMSEQ_TO_MED_PATH.exists():
-            self.itemseq_to_med: Dict[str, str] = json.loads(ITEMSEQ_TO_MED_PATH.read_text(encoding="utf-8"))
+            self.itemseq_to_med: dict[str, str] = json.loads(ITEMSEQ_TO_MED_PATH.read_text(encoding="utf-8"))
         else:
             self.itemseq_to_med = {}
 
@@ -64,12 +62,12 @@ class VisionClassifier:
         return f"ITEMSEQ_{item_seq}"
 
     @torch.no_grad()
-    def predict(self, image_path: str) -> Tuple[str, float]:
+    def predict(self, image_path: str) -> tuple[str, float]:
         img = Image.open(image_path).convert("RGB")
         x = _TF(img).unsqueeze(0).to(self.device)
 
         logits = self.model(x)
-        probs = F.softmax(logits, dim=1)
+        probs = f.softmax(logits, dim=1)
         conf, pred = probs.max(dim=1)
 
         conf_f = float(conf.item())

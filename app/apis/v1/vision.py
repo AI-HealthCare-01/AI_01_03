@@ -1,10 +1,11 @@
-from fastapi import APIRouter, UploadFile, File
-from pathlib import Path
 import shutil
+from pathlib import Path
+
+from fastapi import APIRouter, UploadFile
 from PIL import Image
 
-from ai_worker.vision.detector import predict_boxes
 from ai_worker.vision.classifier import get_classifier
+from ai_worker.vision.detector import predict_boxes
 
 router = APIRouter(prefix="/vision", tags=["Vision"])
 
@@ -15,6 +16,7 @@ CROP_DIR.mkdir(parents=True, exist_ok=True)
 
 THRESHOLD = 0.8
 TOPK = 3
+
 
 def _to_xyxy(det: dict, img_w: int, img_h: int):
     """
@@ -50,8 +52,9 @@ def _to_xyxy(det: dict, img_w: int, img_h: int):
         return None
     return x1, y1, x2, y2
 
+
 @router.post("/identify")
-async def identify(file: UploadFile = File(...)):
+async def identify(file: UploadFile):
     # 1) 업로드 파일 임시 저장
     img_path = TEMP_DIR / file.filename
     with open(img_path, "wb") as buffer:
@@ -60,22 +63,18 @@ async def identify(file: UploadFile = File(...)):
     # 2) YOLO 탐지
     detections = predict_boxes(str(img_path), conf_thres=0.25)  # 필요시 조정
     if not detections:
-        return {
-            "success": False,
-            "candidates": [],
-            "error_code": "LOW_CONFIDENCE"
-        }
+        return {"success": False, "candidates": [], "error_code": "LOW_CONFIDENCE"}
 
     # 3) crop + 분류
     classifier = get_classifier()
 
     with Image.open(img_path) as im:
         im = im.convert("RGB")
-        W, H = im.size
+        w, h = im.size
 
         candidates = []
         for i, det in enumerate(detections):
-            xyxy = _to_xyxy(det, W, H)
+            xyxy = _to_xyxy(det, w, h)
             if xyxy is None:
                 continue
 
@@ -90,24 +89,13 @@ async def identify(file: UploadFile = File(...)):
             det_conf = float(det.get("conf", det.get("confidence", 1.0)))
             final_conf = det_conf * float(cls_conf)  # 보수적으로 결합
 
-            candidates.append({
-                "medication_id": medication_id,
-                "confidence": round(final_conf, 4)
-            })
+            candidates.append({"medication_id": medication_id, "confidence": round(final_conf, 4)})
 
     # 4) 후보 정리 + Sprint01 규칙 적용
     candidates.sort(key=lambda x: x["confidence"], reverse=True)
     candidates = candidates[:TOPK]
 
     if len(candidates) == 0 or candidates[0]["confidence"] < THRESHOLD:
-        return {
-            "success": False,
-            "candidates": [],
-            "error_code": "LOW_CONFIDENCE"
-        }
+        return {"success": False, "candidates": [], "error_code": "LOW_CONFIDENCE"}
 
-    return {
-        "success": True,
-        "candidates": candidates,
-        "error_code": None
-    }
+    return {"success": True, "candidates": candidates, "error_code": None}
