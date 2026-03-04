@@ -21,11 +21,7 @@ from pathlib import Path
 
 # ── 경로 설정 ────────────────────────────────────
 ROOT = Path(__file__).resolve().parent.parent
-EXCEL_PATH = (
-    ROOT
-    / "경구약제 이미지 데이터(데이터 설명서, 경구약제 리스트)"
-    / "단일 경구약제_5,000종 리스트.xlsx"
-)
+EXCEL_PATH = ROOT / "경구약제 이미지 데이터(데이터 설명서, 경구약제 리스트)" / "단일 경구약제_5,000종 리스트.xlsx"
 OUTPUT_PATH = ROOT / "data" / "knowledge_base.json"
 CHECKPOINT_PATH = ROOT / "data" / "_checkpoint.json"
 
@@ -177,11 +173,13 @@ def read_excel() -> list[dict]:
                 continue
 
             seen_codes.add(c_code)
-            medications.append({
-                "c_code": c_code,
-                "category": category,
-                "name": product_name,
-            })
+            medications.append(
+                {
+                    "c_code": c_code,
+                    "category": category,
+                    "name": product_name,
+                }
+            )
 
     wb.close()
     log.info("Excel에서 %d건 로드 (시트 %d개)", len(medications), len(wb.sheetnames))
@@ -281,7 +279,10 @@ def main() -> None:
         if processed % 50 == 0:
             log.info(
                 "진행: %d/%d (성공: %d, 실패: %d)",
-                processed, len(target), success_count, fail_count,
+                processed,
+                len(target),
+                success_count,
+                fail_count,
             )
             _save_output(knowledge)
             save_checkpoint(completed)
@@ -293,7 +294,9 @@ def main() -> None:
 
     log.info(
         "완료! 총 %d건 (API 성공: %d, API 없음: %d)",
-        len(knowledge), success_count, fail_count,
+        len(knowledge),
+        success_count,
+        fail_count,
     )
     log.info("저장 위치: %s", OUTPUT_PATH)
 

@@ -69,17 +69,19 @@ def run_rag_only(questions: list[dict]) -> list[dict]:
         best_score = max(scores) if scores else 0.0
         passed_threshold = best_score >= 0.45
 
-        results.append({
-            "question": q,
-            "category": item["category"],
-            "expect": item["expect"],
-            "actual": "hit" if passed_threshold else "safe",
-            "correct": ("hit" if passed_threshold else "safe") == item["expect"],
-            "best_score": round(best_score, 4),
-            "scores": [round(s, 4) for s in scores],
-            "top_results": top_names,
-            "elapsed_ms": round(elapsed * 1000, 1),
-        })
+        results.append(
+            {
+                "question": q,
+                "category": item["category"],
+                "expect": item["expect"],
+                "actual": "hit" if passed_threshold else "safe",
+                "correct": ("hit" if passed_threshold else "safe") == item["expect"],
+                "best_score": round(best_score, 4),
+                "scores": [round(s, 4) for s in scores],
+                "top_results": top_names,
+                "elapsed_ms": round(elapsed * 1000, 1),
+            }
+        )
 
     return results
 
@@ -119,20 +121,39 @@ async def run_full_pipeline(questions: list[dict]) -> list[dict]:
         total = time.perf_counter() - t0
         is_safe = not passed or llm.contains_out_of_scope_marker(answer)
 
-        results.append({
-            "question": q,
-            "category": item["category"],
-            "expect": item["expect"],
-            "actual": "safe" if is_safe else "hit",
-            "correct": ("safe" if is_safe else "hit") == item["expect"],
-            "best_score": round(best_score, 4),
-            "rag_ms": round(t_rag * 1000, 1),
-            "llm_ms": round(t_llm * 1000, 1),
-            "total_ms": round(total * 1000, 1),
-            "answer_preview": answer[:100] if answer else "(안전 응답)",
-        })
+        results.append(
+            {
+                "question": q,
+                "category": item["category"],
+                "expect": item["expect"],
+                "actual": "safe" if is_safe else "hit",
+                "correct": ("safe" if is_safe else "hit") == item["expect"],
+                "best_score": round(best_score, 4),
+                "rag_ms": round(t_rag * 1000, 1),
+                "llm_ms": round(t_llm * 1000, 1),
+                "total_ms": round(total * 1000, 1),
+                "answer_preview": answer[:100] if answer else "(안전 응답)",
+            }
+        )
 
     return results
+
+
+def _print_result_rows(results: list[dict], mode: str) -> None:
+    """개별 결과 행을 출력합니다."""
+    for i, r in enumerate(results, 1):
+        status = "O" if r["correct"] else "X"
+        if mode == "rag-only":
+            print(f"  {i:2d}. [{status}] score={r['best_score']:.4f} | {r['elapsed_ms']:6.1f}ms | {r['question']}")
+            if not r["correct"]:
+                print(f"      expect={r['expect']}, actual={r['actual']}, top={r['top_results'][:2]}")
+        else:
+            print(
+                f"  {i:2d}. [{status}] score={r['best_score']:.4f} | RAG={r['rag_ms']:6.1f}ms LLM={r['llm_ms']:7.1f}ms Total={r['total_ms']:7.1f}ms"
+            )
+            print(f"      {r['question']}")
+            if not r["correct"]:
+                print(f"      expect={r['expect']}, actual={r['actual']}")
 
 
 def print_report(results: list[dict], mode: str) -> None:
@@ -144,36 +165,24 @@ def print_report(results: list[dict], mode: str) -> None:
     correct = sum(1 for r in results if r["correct"])
     total = len(results)
 
-    for i, r in enumerate(results, 1):
-        status = "O" if r["correct"] else "X"
-        if mode == "rag-only":
-            print(f"  {i:2d}. [{status}] score={r['best_score']:.4f} | {r['elapsed_ms']:6.1f}ms | {r['question']}")
-            if not r["correct"]:
-                print(f"      expect={r['expect']}, actual={r['actual']}, top={r['top_results'][:2]}")
-        else:
-            print(f"  {i:2d}. [{status}] score={r['best_score']:.4f} | RAG={r['rag_ms']:6.1f}ms LLM={r['llm_ms']:7.1f}ms Total={r['total_ms']:7.1f}ms")
-            print(f"      {r['question']}")
-            if not r["correct"]:
-                print(f"      expect={r['expect']}, actual={r['actual']}")
+    _print_result_rows(results, mode)
+
+    times = [r["elapsed_ms"] for r in results] if mode == "rag-only" else [r["total_ms"] for r in results]
 
     print(f"\n{'─' * 80}")
-    print(f"  정확도: {correct}/{total} ({correct/total*100:.0f}%)")
-
-    if mode == "rag-only":
-        times = [r["elapsed_ms"] for r in results]
-    else:
-        times = [r["total_ms"] for r in results]
-
-    print(f"  응답 시간: avg={sum(times)/len(times):.0f}ms, "
-          f"min={min(times):.0f}ms, max={max(times):.0f}ms, "
-          f"p95={sorted(times)[int(len(times)*0.95)]:.0f}ms")
+    print(f"  정확도: {correct}/{total} ({correct / total * 100:.0f}%)")
+    print(
+        f"  응답 시간: avg={sum(times) / len(times):.0f}ms, "
+        f"min={min(times):.0f}ms, max={max(times):.0f}ms, "
+        f"p95={sorted(times)[int(len(times) * 0.95)]:.0f}ms"
+    )
 
     if mode != "rag-only":
         under_5s = sum(1 for t in times if t < 5000)
-        print(f"  5초 이내 응답: {under_5s}/{total} ({under_5s/total*100:.0f}%)")
+        print(f"  5초 이내 응답: {under_5s}/{total} ({under_5s / total * 100:.0f}%)")
 
     # 카테고리별 정확도
-    categories = {}
+    categories: dict[str, dict[str, int]] = {}
     for r in results:
         cat = r["category"]
         if cat not in categories:
@@ -182,7 +191,7 @@ def print_report(results: list[dict], mode: str) -> None:
         if r["correct"]:
             categories[cat]["correct"] += 1
 
-    print(f"\n  카테고리별:")
+    print("\n  카테고리별:")
     for cat, stats in categories.items():
         print(f"    {cat:15s}: {stats['correct']}/{stats['total']}")
 

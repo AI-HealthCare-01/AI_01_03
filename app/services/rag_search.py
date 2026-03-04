@@ -102,7 +102,7 @@ class RAGSearchService:
         scores, indices = self._index.search(query_np, top_k)
 
         results: list[SearchResult] = []
-        for score, idx in zip(scores[0], indices[0]):
+        for score, idx in zip(scores[0], indices[0], strict=False):
             if idx < 0 or idx >= len(self._chunks):
                 continue
             meta = self._meta[idx] if idx < len(self._meta) else {}

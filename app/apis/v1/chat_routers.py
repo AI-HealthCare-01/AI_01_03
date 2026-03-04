@@ -43,9 +43,7 @@ async def chat(request: ChatRequest) -> ORJSONResponse:
 
     rag_scores = [r.score for r in results] if results else []
     rag_context = "\n\n".join(r.chunk for r in results) if results else ""
-    rag_citations = [
-        {"source": r.source, "title": r.name} for r in results
-    ] if results else []
+    rag_citations = [{"source": r.source, "title": r.name} for r in results] if results else []
 
     # ── Step 2: 가드레일 — 임계값 검증 ──
     if not _llm_service.check_rag_confidence(rag_scores):

@@ -89,13 +89,15 @@ def build_chunks(medications: list[dict]) -> tuple[list[str], list[dict]]:
             continue
 
         chunks.append(chunk)
-        meta.append({
-            "medication_id": med.get("medication_id", ""),
-            "name": med.get("name", ""),
-            "category": med.get("category", ""),
-            "c_code": med.get("c_code", ""),
-            "source": med.get("source", ""),
-        })
+        meta.append(
+            {
+                "medication_id": med.get("medication_id", ""),
+                "name": med.get("name", ""),
+                "category": med.get("category", ""),
+                "c_code": med.get("c_code", ""),
+                "source": med.get("source", ""),
+            }
+        )
 
     return chunks, meta
 
