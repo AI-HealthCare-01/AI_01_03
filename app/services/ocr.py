@@ -89,4 +89,3 @@ class OCRService:
 
     def _normalize_spaces(self, value: str) -> str:
         return " ".join(value.split())
-

@@ -6,7 +6,6 @@ from pydantic import BaseModel, Field, field_validator
 
 from app.dtos.base import BaseSerializerModel
 
-
 MEDICATION_ID_PATTERN = r"^[A-Z0-9]+(_[A-Z0-9]+)+$"
 
 

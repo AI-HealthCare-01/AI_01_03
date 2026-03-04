@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import re
 from datetime import timedelta
-
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query, Request
@@ -12,14 +11,14 @@ from app.dtos.integration import (
     ChatRequest,
     ChatSections,
     ChatSuccessResponse,
-    OCRParseRequest,
-    OCRParseResponse,
-    OCRParsed,
     MedicationDashboardData,
     MedicationDashboardResponse,
     MedicationHistoryData,
     MedicationHistoryItem,
     MedicationHistoryResponse,
+    OCRParsed,
+    OCRParseRequest,
+    OCRParseResponse,
     VisionCandidate,
     VisionIdentifyRequest,
     VisionIdentifyResponse,

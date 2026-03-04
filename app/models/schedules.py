@@ -18,4 +18,3 @@ class MedicationSchedule(models.Model):
 
     class Meta:
         table = "medication_schedules"
-

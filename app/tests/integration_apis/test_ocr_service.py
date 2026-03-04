@@ -21,4 +21,3 @@ def test_parse_prescription_text_uses_previous_line_as_name():
     assert len(medications) == 1
     assert medications[0].name == "타미플루캡슐"
     assert medications[0].dose_text == "1일 2회, 5일분"
-

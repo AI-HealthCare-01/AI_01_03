@@ -24,4 +24,3 @@ class PrescriptionItem(models.Model):
 
     class Meta:
         table = "prescription_items"
-
