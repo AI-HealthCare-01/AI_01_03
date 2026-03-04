@@ -17,6 +17,14 @@ TEST_DB_LABEL = "models"
 TEST_DB_TZ = "Asia/Seoul"
 
 
+def pytest_addoption(parser: pytest.Parser) -> None:
+    # Keep compatibility when debugging plugin is disabled; ignore if pytest already defines --trace.
+    try:
+        parser.addoption("--trace", action="store_true", default=False, help="Immediate break into debugger")
+    except Exception:
+        pass
+
+
 def get_test_db_config() -> dict[str, Any]:
     tortoise_config = generate_config(
         db_url=f"mysql://{config.DB_USER}:{config.DB_PASSWORD}@{config.DB_HOST}:{config.DB_PORT}/test",

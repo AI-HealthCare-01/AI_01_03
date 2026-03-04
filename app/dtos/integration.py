@@ -87,3 +87,35 @@ class ChatSuccessResponse(ContractBaseResponse):
 class ChatFailureResponse(ContractBaseResponse):
     success: Literal[False] = False
     error_code: str
+
+
+class MedicationHistoryItem(BaseSerializerModel):
+    schedule_id: int
+    medication_name: str
+    dose_text: str
+    day_offset: int
+    time_slot: str
+    scheduled_time: str
+    is_completed: bool
+
+
+class MedicationHistoryData(BaseSerializerModel):
+    total_count: int
+    completed_count: int
+    pending_count: int
+    items: list[MedicationHistoryItem]
+
+
+class MedicationHistoryResponse(ContractBaseResponse):
+    data: MedicationHistoryData
+
+
+class MedicationDashboardData(BaseSerializerModel):
+    total_schedules: int
+    completed_schedules: int
+    upcoming_schedules: int
+    adherence_rate: float
+
+
+class MedicationDashboardResponse(ContractBaseResponse):
+    data: MedicationDashboardData

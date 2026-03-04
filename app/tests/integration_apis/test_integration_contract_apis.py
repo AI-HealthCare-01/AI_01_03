@@ -3,6 +3,9 @@ from starlette import status
 from tortoise.contrib.test import TestCase
 
 from app.main import app
+from app.models.prescriptions import Prescription, PrescriptionItem
+from app.models.schedules import MedicationSchedule
+from app.models.users import Gender, User
 
 
 class TestIntegrationContractAPIs(TestCase):
@@ -87,3 +90,91 @@ class TestIntegrationContractAPIs(TestCase):
             response = await client.post("/api/chat", json={"rag_confidence": 0.1})
         assert response.status_code == status.HTTP_200_OK
         assert response.json() == {"success": False, "error_code": "LOW_RAG_CONFIDENCE"}
+
+    async def test_medication_history_success_shape(self):
+        user = await User.create(
+            email="history@test.com",
+            hashed_password="hashed",
+            name="tester",
+            gender=Gender.MALE,
+            birthday="2000-01-01",
+            phone_number="01011112222",
+        )
+        prescription = await Prescription.create(user_id=user.id, source_text="rx")
+        item = await PrescriptionItem.create(
+            prescription_id=prescription.id,
+            name="타이레놀정",
+            dose_text="1일 3회, 3일분",
+            medication_id="TYLENOL_500",
+        )
+        await MedicationSchedule.create(
+            user_id=user.id,
+            prescription_item_id=item.id,
+            day_offset=0,
+            time_slot="아침",
+            scheduled_time="08:00:00",
+            is_completed=True,
+        )
+        await MedicationSchedule.create(
+            user_id=user.id,
+            prescription_item_id=item.id,
+            day_offset=0,
+            time_slot="점심",
+            scheduled_time="12:00:00",
+            is_completed=False,
+        )
+
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            response = await client.get(f"/api/history?user_id={user.id}")
+        assert response.status_code == status.HTTP_200_OK
+        body = response.json()
+        assert body["success"] is True
+        assert body["error_code"] is None
+        assert body["data"]["total_count"] == 2
+        assert body["data"]["completed_count"] == 1
+        assert body["data"]["pending_count"] == 1
+        assert len(body["data"]["items"]) == 2
+
+    async def test_medication_dashboard_success_shape(self):
+        user = await User.create(
+            email="dashboard@test.com",
+            hashed_password="hashed",
+            name="tester2",
+            gender=Gender.FEMALE,
+            birthday="2001-01-01",
+            phone_number="01033334444",
+        )
+        prescription = await Prescription.create(user_id=user.id, source_text="rx")
+        item = await PrescriptionItem.create(
+            prescription_id=prescription.id,
+            name="게보린정",
+            dose_text="1일 2회, 2일분",
+            medication_id="GEBORIN_500",
+        )
+        await MedicationSchedule.create(
+            user_id=user.id,
+            prescription_item_id=item.id,
+            day_offset=0,
+            time_slot="아침",
+            scheduled_time="08:00:00",
+            is_completed=True,
+        )
+        await MedicationSchedule.create(
+            user_id=user.id,
+            prescription_item_id=item.id,
+            day_offset=0,
+            time_slot="저녁",
+            scheduled_time="20:00:00",
+            is_completed=False,
+        )
+
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            response = await client.get(f"/api/dashboard?user_id={user.id}")
+        assert response.status_code == status.HTTP_200_OK
+        body = response.json()
+        assert body["success"] is True
+        assert body["error_code"] is None
+        assert body["data"]["total_schedules"] == 2
+        assert body["data"]["completed_schedules"] == 1
+        assert body["data"]["upcoming_schedules"] == 1
+        assert body["data"]["adherence_rate"] == 50.0

@@ -1,7 +1,7 @@
 ---
 tags: [타임라인, 2단계, 개발, Sprint1, 요약]
 기간: 1주
-상태: 예정
+상태: 진행중 (3/4~3/5 핵심 개발 완료)
 시작일: 2026-02-27
 종료일: 2026-03-05
 ---
@@ -70,8 +70,17 @@ tags: [타임라인, 2단계, 개발, Sprint1, 요약]
 | **2/28 (금)** | 사용자 인증/인가, Vision AI 연동 |
 | **3/1-2 (주말)** | OCR 연동, RAG 파이프라인 구축 |
 | **3/3 (월)** | LLM 가이드 서비스 개발 |
-| **3/4 (화)** | 복약 이력 API, 챗봇 API 개발 |
-| **3/5 (수)** | 통합 테스트 및 버그 수정 🎯 |
+| **3/4 (화)** | 복약 이력 API, 챗봇 API 개발 ✅ |
+| **3/5 (수)** | 통합 테스트 및 버그 수정 ✅ (3/4 선반영) |
+
+---
+
+## 2026-03-04 진행 결과
+
+- 통합 API 구현 확인: `/api/vision/identify`, `/api/ocr/parse`, `/api/chat`
+- 처방전 저장 및 스케줄 생성 로직 반영 (`PrescriptionFlowService`)
+- 계약 테스트 통과: `app/tests/integration_apis/test_integration_contract_apis.py` (10 passed)
+- 전체 테스트 통과: `app/tests` (24 passed)
 
 ---
 

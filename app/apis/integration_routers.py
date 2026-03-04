@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 import re
+from datetime import timedelta
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, Query, Request
 
 from app.dtos.integration import (
     ChatFailureResponse,
@@ -14,10 +15,16 @@ from app.dtos.integration import (
     OCRParseRequest,
     OCRParseResponse,
     OCRParsed,
+    MedicationDashboardData,
+    MedicationDashboardResponse,
+    MedicationHistoryData,
+    MedicationHistoryItem,
+    MedicationHistoryResponse,
     VisionCandidate,
     VisionIdentifyRequest,
     VisionIdentifyResponse,
 )
+from app.models.schedules import MedicationSchedule
 from app.services.ocr import OCRService
 from app.services.prescription_flow import PrescriptionFlowService
 
@@ -36,6 +43,18 @@ def _tts_segments(answer: str) -> list[str]:
 
 def _is_http_url(value: str) -> bool:
     return bool(_http_url_regex.match(value.strip()))
+
+
+def _format_time_value(value: object) -> str:
+    if hasattr(value, "strftime"):
+        return value.strftime("%H:%M:%S")
+    if isinstance(value, timedelta):
+        total_seconds = int(value.total_seconds())
+        hours = (total_seconds // 3600) % 24
+        minutes = (total_seconds % 3600) // 60
+        seconds = total_seconds % 60
+        return f"{hours:02d}:{minutes:02d}:{seconds:02d}"
+    return str(value)
 
 
 @integration_router.post("/vision/identify", response_model=VisionIdentifyResponse)
@@ -155,3 +174,50 @@ async def chat(request: Request) -> ChatSuccessResponse | ChatFailureResponse:
         citations=[],
         disclaimer=disclaimer,
     )
+
+
+@integration_router.get("/history", response_model=MedicationHistoryResponse)
+async def medication_history(user_id: Annotated[int, Query(ge=1)]) -> MedicationHistoryResponse:
+    schedules = (
+        await MedicationSchedule.filter(user_id=user_id)
+        .select_related("prescription_item")
+        .order_by("-created_at", "-id")
+    )
+
+    items = [
+        MedicationHistoryItem(
+            schedule_id=int(schedule.id),
+            medication_name=schedule.prescription_item.name,
+            dose_text=schedule.prescription_item.dose_text,
+            day_offset=int(schedule.day_offset),
+            time_slot=schedule.time_slot,
+            scheduled_time=_format_time_value(schedule.scheduled_time),
+            is_completed=bool(schedule.is_completed),
+        )
+        for schedule in schedules
+    ]
+    completed_count = sum(1 for schedule in schedules if schedule.is_completed)
+    total_count = len(schedules)
+    data = MedicationHistoryData(
+        total_count=total_count,
+        completed_count=completed_count,
+        pending_count=total_count - completed_count,
+        items=items,
+    )
+    return MedicationHistoryResponse(success=True, error_code=None, data=data)
+
+
+@integration_router.get("/dashboard", response_model=MedicationDashboardResponse)
+async def medication_dashboard(user_id: Annotated[int, Query(ge=1)]) -> MedicationDashboardResponse:
+    total_schedules = await MedicationSchedule.filter(user_id=user_id).count()
+    completed_schedules = await MedicationSchedule.filter(user_id=user_id, is_completed=True).count()
+    upcoming_schedules = total_schedules - completed_schedules
+    adherence_rate = round((completed_schedules / total_schedules) * 100, 2) if total_schedules else 0.0
+
+    data = MedicationDashboardData(
+        total_schedules=total_schedules,
+        completed_schedules=completed_schedules,
+        upcoming_schedules=upcoming_schedules,
+        adherence_rate=adherence_rate,
+    )
+    return MedicationDashboardResponse(success=True, error_code=None, data=data)
