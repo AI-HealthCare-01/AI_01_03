@@ -103,10 +103,10 @@ class LLMGuideService:
         }
 
         section_map = {
-            "summary": r"(?:summary|요약)[:\s]*(.+?)(?=\n\s*(?:dosage|복용|precautions|주의|tips|팁|$))",
-            "dosage": r"(?:dosage|복용(?:법|량)?)[:\s]*(.+?)(?=\n\s*(?:precautions|주의|tips|팁|$))",
-            "precautions": r"(?:precautions|주의(?:사항)?)[:\s]*(.+?)(?=\n\s*(?:tips|팁|$))",
-            "tips": r"(?:tips|팁|보관|추가)[:\s]*(.+?)$",
+            "summary": r"(?:\*{0,2}(?:summary|요약)\*{0,2})[:\s]*(.+?)(?=\n\s*\*{0,2}(?:dosage|복용|precautions|주의|tips|팁)|$)",
+            "dosage": r"(?:\*{0,2}(?:dosage|복용(?:법|량)?)\*{0,2})[:\s]*(.+?)(?=\n\s*\*{0,2}(?:precautions|주의|tips|팁)|$)",
+            "precautions": r"(?:\*{0,2}(?:precautions|주의(?:사항)?)\*{0,2})[:\s]*(.+?)(?=\n\s*\*{0,2}(?:tips|팁|보관|추가)|$)",
+            "tips": r"(?:\*{0,2}(?:tips|팁|보관|추가(?:\s*안내)?)\*{0,2})[:\s]*(.+?)$",
         }
 
         for key, pattern in section_map.items():
@@ -115,6 +115,11 @@ class LLMGuideService:
                 text = match.group(1).strip()
                 if text:
                     sections[key] = text
+
+        # 어떤 섹션도 매칭 안 되면 전체 텍스트를 summary에 넣기
+        all_default = all(v == default for v in sections.values())
+        if all_default and raw_answer.strip():
+            sections["summary"] = raw_answer.strip()
 
         return sections
 
@@ -183,7 +188,22 @@ class LLMGuideService:
             max_tokens=_cfg.GLM_MAX_TOKENS,
             temperature=_cfg.GLM_TEMPERATURE,
         )
-        return resp.choices[0].message.content or ""
+        msg = resp.choices[0].message
+        content = msg.content or ""
+        if not content.strip():
+            # GLM-5 reasoning 모델: content가 비어있으면 reasoning 필드 사용
+            raw = msg.model_dump()
+            reasoning = raw.get("reasoning") or ""
+            if not reasoning:
+                # reasoning_details 배열에서 텍스트 추출
+                for detail in raw.get("reasoning_details") or []:
+                    if isinstance(detail, dict) and detail.get("text"):
+                        reasoning = detail["text"]
+                        break
+            if reasoning.strip():
+                logger.info("GLM-5: content 비어있음, reasoning 필드 사용 (%d자)", len(reasoning))
+                content = reasoning
+        return content
 
     async def call_openai(self, prompt: str) -> str:
         """GPT-4o-mini (프론트 채팅 응답) 호출."""
@@ -196,9 +216,16 @@ class LLMGuideService:
         return resp.choices[0].message.content or ""
 
     async def generate_answer(self, context: str, question: str) -> str:
-        """RAG 컨텍스트 + 질문으로 GLM-5 답변 생성."""
+        """RAG 컨텍스트 + 질문으로 LLM 답변 생성.
+
+        GLM-5 우선 호출, 빈 응답 시 GPT-4o-mini fallback.
+        """
         prompt = self.build_prompt(context=context, question=question)
-        return await self.call_glm(prompt)
+        answer = await self.call_glm(prompt)
+        if not answer.strip():
+            logger.warning("GLM-5 빈 응답 — GPT-4o-mini fallback")
+            answer = await self.call_openai(prompt)
+        return answer
 
     # ── 컨텍스트 외 질문 감지 (추가 가드레일) ─
     @staticmethod

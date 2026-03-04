@@ -46,8 +46,9 @@ async def chat(request: ChatRequest) -> ORJSONResponse:
     rag_citations = [{"source": r.source, "title": r.name} for r in results] if results else []
 
     # ── Step 2: 가드레일 — 임계값 검증 ──
+    logger.warning("RAG scores: %s (threshold=%.2f)", rag_scores, _llm_service.confidence_threshold)
     if not _llm_service.check_rag_confidence(rag_scores):
-        logger.warning("RAG 임계값 미달 — 안전 응답 반환")
+        logger.warning("RAG 임계값 미달 — 안전 응답 반환 (max=%.4f)", max(rag_scores) if rag_scores else 0)
         error = _llm_service.build_safe_response()
         return ORJSONResponse(content=error, status_code=422)
 
@@ -65,8 +66,9 @@ async def chat(request: ChatRequest) -> ORJSONResponse:
         )
 
     # ── Step 4: 안전 응답 감지 ──
+    logger.warning("LLM 응답 preview: %s", raw_answer[:200])
     if _llm_service.contains_out_of_scope_marker(raw_answer):
-        logger.info("LLM이 컨텍스트 외 질문으로 판단 — 안전 응답 반환")
+        logger.warning("LLM이 컨텍스트 외 질문으로 판단 — 안전 응답 반환")
         error = _llm_service.build_safe_response()
         return ORJSONResponse(content=error, status_code=422)
 

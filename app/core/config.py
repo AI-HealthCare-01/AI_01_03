@@ -75,7 +75,7 @@ class Config(BaseSettings):
     GLM_API_KEY: str = ""
     GLM_BASE_URL: str = "https://api.kilo.ai/api/gateway"
     GLM_MODEL: str = "z-ai/glm-5"
-    GLM_MAX_TOKENS: int = 2048
+    GLM_MAX_TOKENS: int = 4096
     GLM_TEMPERATURE: float = 0.3
 
     RAG_CONFIDENCE_THRESHOLD: float = 0.45
