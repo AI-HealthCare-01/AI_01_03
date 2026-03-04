@@ -21,3 +21,13 @@ envs/
 *.pt
 tmp_uploads/
 bus.jpg
+dataset/
+# vision assets / datasets
+ai_worker/vision/assets/
+tmp/
+cls_data/
+cls_dataset/
+cls_dataset_itemseq/
+*.zip
+*.pth
+*.onnx
