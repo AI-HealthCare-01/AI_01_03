@@ -1,7 +1,7 @@
 ---
 tags: [타임라인, 2단계, 개발, Sprint1, 요약]
 기간: 1주
-상태: 진행중 (3/4~3/5 핵심 개발 완료)
+상태: 완료 (3/4~3/5 핵심 개발/테스트 완료)
 시작일: 2026-02-27
 종료일: 2026-03-05
 ---
@@ -81,6 +81,13 @@ tags: [타임라인, 2단계, 개발, Sprint1, 요약]
 - 처방전 저장 및 스케줄 생성 로직 반영 (`PrescriptionFlowService`)
 - 계약 테스트 통과: `app/tests/integration_apis/test_integration_contract_apis.py` (10 passed)
 - 전체 테스트 통과: `app/tests` (24 passed)
+
+## 2026-03-05 진행 결과
+
+- DB 저장 트랜잭션 강화 (`using_db` 연결 명시)
+- 스케줄 생성 서비스 단위 테스트 보강
+- Draft PR 문서 작성 완료
+- 전체 테스트 통과: `app/tests` (28 passed)
 
 ---
 

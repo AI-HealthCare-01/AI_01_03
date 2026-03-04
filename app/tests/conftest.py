@@ -15,6 +15,7 @@ from app.db.databases import TORTOISE_APP_MODELS
 TEST_BASE_URL = "http://test"
 TEST_DB_LABEL = "models"
 TEST_DB_TZ = "Asia/Seoul"
+TEST_DB_NAME = "test"
 
 
 def pytest_addoption(parser: pytest.Parser) -> None:
@@ -27,7 +28,7 @@ def pytest_addoption(parser: pytest.Parser) -> None:
 
 def get_test_db_config() -> dict[str, Any]:
     tortoise_config = generate_config(
-        db_url=f"mysql://{config.DB_USER}:{config.DB_PASSWORD}@{config.DB_HOST}:{config.DB_PORT}/test",
+        db_url=f"mysql://{config.DB_USER}:{config.DB_PASSWORD}@{config.DB_HOST}:{config.DB_PORT}/{TEST_DB_NAME}",
         app_modules={TEST_DB_LABEL: TORTOISE_APP_MODELS},
         connection_label=TEST_DB_LABEL,
         testing=True,

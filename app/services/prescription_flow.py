@@ -3,6 +3,7 @@ from __future__ import annotations
 import re
 from datetime import time
 
+from tortoise.backends.base.client import BaseDBAsyncClient
 from tortoise.transactions import in_transaction
 
 from app.dtos.integration import OCRMedication
@@ -26,8 +27,12 @@ class PrescriptionFlowService:
         source_text: str,
         medications: list[OCRMedication],
     ) -> dict[str, int]:
-        async with in_transaction():
-            prescription = await Prescription.create(user_id=user_id, source_text=source_text)
+        async with in_transaction() as connection:
+            prescription = await Prescription.create(
+                user_id=user_id,
+                source_text=source_text,
+                using_db=connection,
+            )
             schedule_count = 0
 
             for medication in medications:
@@ -35,12 +40,14 @@ class PrescriptionFlowService:
                     prescription_id=prescription.id,
                     name=medication.name,
                     dose_text=medication.dose_text,
+                    using_db=connection,
                 )
 
                 created = await self._create_schedules_from_dose(
                     user_id=user_id,
                     prescription_item_id=item.id,
                     dose_text=medication.dose_text,
+                    connection=connection,
                 )
                 schedule_count += created
 
@@ -56,6 +63,7 @@ class PrescriptionFlowService:
         user_id: int,
         prescription_item_id: int,
         dose_text: str,
+        connection: BaseDBAsyncClient | None = None,
     ) -> int:
         frequency_per_day, duration_days = self._extract_frequency_and_days(dose_text)
         schedule_times = self._resolve_schedule_times(frequency_per_day)
@@ -69,6 +77,7 @@ class PrescriptionFlowService:
                     day_offset=day_offset,
                     time_slot=f"DOSE_{index + 1}",
                     scheduled_time=scheduled_time,
+                    using_db=connection,
                 )
                 total_created += 1
         return total_created
@@ -90,4 +99,3 @@ class PrescriptionFlowService:
         while len(base_times) < frequency_per_day:
             base_times.append(_DEFAULT_SCHEDULE_TIMES[-1])
         return base_times
-
