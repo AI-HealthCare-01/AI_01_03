@@ -133,7 +133,9 @@
 ## 📅 03/07(토)
 
 ### 오전
-* [ ] develop 병합
+* [x] develop 병합
+  - binna/llm → develop 병합 완료 (.gitignore 충돌 해결)
+  - develop 브랜치에 RAG+LLM 파이프라인 전체 반영됨
 
 ### 오후
 * [x] E2E 질문 → 답변 → TTS 확인
