@@ -68,7 +68,7 @@ class Config(BaseSettings):
     # 프론트 LLM (GPT-4o-mini — 채팅 응답)
     OPENAI_API_KEY: str = ""
     OPENAI_MODEL: str = "gpt-4o-mini"
-    OPENAI_MAX_TOKENS: int = 1024
+    OPENAI_MAX_TOKENS: int = 2048
     OPENAI_TEMPERATURE: float = 0.3
 
     # 백엔드 LLM (GLM-5 — RAG reasoning/agent)
