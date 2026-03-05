@@ -273,6 +273,7 @@ def main() -> None:
 
     # 백업 생성
     import shutil
+
     shutil.copy2(KB_PATH, BACKUP_PATH)
     log.info("백업 저장: %s", BACKUP_PATH)
 

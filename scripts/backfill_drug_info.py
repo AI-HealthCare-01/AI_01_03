@@ -135,7 +135,7 @@ def build_search_names(product_name: str) -> list[str]:
         # 한글 2~4글자 제조사 + 약명
         match = re.match(r"^[가-힣]{2,4}(?=.{3,})", no_qty)
         if match:
-            without_company = no_qty[match.end():]
+            without_company = no_qty[match.end() :]
             add(without_company)
             # 추가로 제형/용량도 제거
             without_form = re.sub(r"(장용|서방|제피|츄어블)?정\d*.*$", "", without_company).strip()
@@ -199,8 +199,9 @@ def main() -> None:
     parser.add_argument("--limit", type=int, default=0, help="처리 건수 제한 (0=전체)")
     parser.add_argument("--sleep", type=float, default=0.3, help="API 호출 간격(초)")
     parser.add_argument("--dry-run", action="store_true", help="API 호출 없이 검색어만 출력")
-    parser.add_argument("--category", choices=["일반의약품", "전문의약품", "all"], default="all",
-                        help="보충할 카테고리 (기본: all)")
+    parser.add_argument(
+        "--category", choices=["일반의약품", "전문의약품", "all"], default="all", help="보충할 카테고리 (기본: all)"
+    )
     args = parser.parse_args()
 
     env = load_env()
@@ -215,9 +216,9 @@ def main() -> None:
 
     # 빈 엔트리 필터링
     empty_entries = [
-        m for m in medications
-        if not m.get("efficacy")
-        and (args.category == "all" or m.get("category") == args.category)
+        m
+        for m in medications
+        if not m.get("efficacy") and (args.category == "all" or m.get("category") == args.category)
     ]
 
     if args.limit:
@@ -233,6 +234,7 @@ def main() -> None:
 
     # 백업 생성
     import shutil
+
     shutil.copy2(KB_PATH, BACKUP_PATH)
     log.info("백업 저장: %s", BACKUP_PATH)
 
@@ -243,14 +245,12 @@ def main() -> None:
         ok = backfill_entry(api_key, entry, args.sleep)
         if ok:
             success_count += 1
-            log.info("OK [%d/%d] %s -> %s", i + 1, len(empty_entries),
-                     entry["name"], entry.get("api_item_name", ""))
+            log.info("OK [%d/%d] %s -> %s", i + 1, len(empty_entries), entry["name"], entry.get("api_item_name", ""))
         else:
             fail_count += 1
 
         if (i + 1) % 50 == 0:
-            log.info("진행: %d/%d (성공: %d, 실패: %d)",
-                     i + 1, len(empty_entries), success_count, fail_count)
+            log.info("진행: %d/%d (성공: %d, 실패: %d)", i + 1, len(empty_entries), success_count, fail_count)
             # 중간 저장
             kb_data["total"] = len(medications)
             KB_PATH.write_text(
@@ -266,9 +266,12 @@ def main() -> None:
     )
 
     log.info("완료! 보충 성공: %d건, 실패: %d건", success_count, fail_count)
-    log.info("기존 데이터: %d건 + 신규: %d건 = 총 %d건",
-             len(medications) - len(empty_entries), success_count,
-             len(medications) - len(empty_entries) + success_count)
+    log.info(
+        "기존 데이터: %d건 + 신규: %d건 = 총 %d건",
+        len(medications) - len(empty_entries),
+        success_count,
+        len(medications) - len(empty_entries) + success_count,
+    )
 
 
 if __name__ == "__main__":
