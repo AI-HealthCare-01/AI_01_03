@@ -173,10 +173,55 @@
 
 ### 야간
 * [x] OpenAI 사용량 모니터링 포인트 정리
-  - GLM-5 (Kilo AI): 요청당 max_tokens=2048, temperature=0.3
+  - GLM-5 (Kilo AI): 요청당 max_tokens=4096, temperature=0.3
   - GPT-4o-mini: 요청당 max_tokens=1024, temperature=0.3
   - 모니터링 포인트: `llm_guide.py:call_glm()`, `call_openai()`
   - 비용 추적: Kilo AI 대시보드 + OpenAI Usage 페이지
+
+---
+
+## 📅 03/05(목) — 품질 개선 + E2E 검증
+
+### 오전
+* [x] RAG 하이브리드 검색 구현 (키워드 + 벡터 결합)
+  - `app/services/rag_search.py` — `_extract_core_name()`, `_keyword_match_indices()` 추가
+  - 약품명 키워드 부스팅 (name_boost=0.5): FAISS 벡터 검색에 키워드 매칭 점수 가산
+  - 제형명 접미사 제거 (정, 캡슐, 시럽, 서방정 등): "타이레놀정500mg" → "타이레놀"
+  - 양방향 키워드 매칭: 약품 코어명→쿼리 포함 또는 쿼리 토큰→약품 코어명 포함
+  - **게보린 검색 개선**: cosine sim 0.30 → 하이브리드 0.80 (1위로 상승)
+
+* [x] GLM-5 빈 응답 문제 해결
+  - `app/services/llm_guide.py` — `call_glm()` 수정
+  - GLM-5 reasoning 모델이 content를 비워두고 `reasoning` 필드에 답변 배치하는 문제
+  - `msg.model_dump()["reasoning"]` 및 `reasoning_details` fallback 추가
+  - `max_tokens` 2048→4096 증가: reasoning 완료 후 content 생성 보장
+  - GPT-4o-mini fallback: GLM-5 빈 응답 시 자동 전환
+
+* [x] 섹션 파싱 + 프롬프트 개선
+  - `llm_guide.py:parse_sections()` — regex 유연화 (markdown bold 대응), 전체 텍스트 summary fallback
+  - `system_prompt.py` — 한국어 전용 답변 규칙 강화 ("영어, 중국어 등 다른 언어를 섞지 마세요")
+
+* [x] 신규 API 키 4종 등록
+  - `app/core/config.py` — DrugPrdtPrmsnInfoService07, DURPrdlstInfoService03, msupUserInfoService1.2, msupCmpnMeftInfoService
+
+### 오후
+* [x] E2E 스트레스 테스트 12건 통과
+  - 약품 검색 9건 성공: 게보린, 타이레놀, 애드빌, 우루사, 부루펜, 아로나민, 판피린, 마그밀, 낙센
+  - 가드레일 차단 3건 정상: 후시딘(데이터 없음), 날씨, 비트코인
+  - 실패 0건
+  - 모든 약품에서 정확한 Citation #1 매칭 확인
+
+* [x] 응답 속도 개선: 평균 50초 → 4.0초 (5초 목표 달성)
+  - LLM 우선순위 전환: GLM-5(느림, reasoning) → GPT-4o-mini(빠름, ~2초) 기본으로 변경
+  - GPT-4o-mini 실패 시 GLM-5 fallback 유지
+  - 서버 startup 워밍업: RAG 인덱스 + 임베딩 모델 미리 로드 (`app/main.py`)
+  - 첫 요청 콜드스타트 10.9초 → 4.0초로 개선
+
+* [x] Git Flow 커밋 + 푸시 → PR #4 반영
+  - `fix: RAG 검색 품질 개선 + GLM-5 빈 응답 해결` (4 files, +103/-15)
+  - `fix: 시스템 프롬프트에 한국어 전용 답변 규칙 강화` (1 file, +2/-1)
+  - `perf: LLM 응답 속도 개선 + RAG 워밍업 추가`
+  - ruff lint/format 전체 통과
 
 ---
 
@@ -205,13 +250,17 @@
 공공누리 제4유형(출처표시-상업적이용금지-변경금지)에 따라 이용합니다.
 ```
 
-### 2. 환각 리스크 — ✅ 평가 완료
+### 2. 환각 리스크 — ✅ 평가 완료 + 품질 개선
 * [x] 평가 질문 20개 벤치마크 실행 → RAG 정확도 70% (14/20)
 * 주요 패턴: 미등록 약품 miss, 모호한 질문 오매칭, 범위 밖 고점수
 * LLM Step 4 가드레일로 2차 필터링 대응
+* **03/05 개선**: 하이브리드 검색 도입 → 약품명 매칭 정확도 대폭 향상
+* E2E 스트레스 테스트 12건: 성공 9, 정상 차단 3, 실패 0
 
-### 3. 응답 지연 — ✅ 측정 완료
-* [x] RAG 검색 avg 23ms, 5초 목표 충분히 달성
+### 3. 응답 지연 — ✅ 해결 (5초 목표 달성)
+* [x] RAG 검색 avg 23ms
+* [x] GPT-4o-mini 기본 전환 → 전체 평균 4.0초 (5초 목표 달성)
+* 서버 startup 워밍업으로 콜드스타트 제거
 
 ---
 

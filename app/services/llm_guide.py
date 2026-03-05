@@ -218,13 +218,16 @@ class LLMGuideService:
     async def generate_answer(self, context: str, question: str) -> str:
         """RAG 컨텍스트 + 질문으로 LLM 답변 생성.
 
-        GLM-5 우선 호출, 빈 응답 시 GPT-4o-mini fallback.
+        GPT-4o-mini 우선 (빠름, ~2초), 실패 시 GLM-5 fallback.
         """
         prompt = self.build_prompt(context=context, question=question)
-        answer = await self.call_glm(prompt)
-        if not answer.strip():
-            logger.warning("GLM-5 빈 응답 — GPT-4o-mini fallback")
+        try:
             answer = await self.call_openai(prompt)
+            if answer.strip():
+                return answer
+        except Exception:
+            logger.warning("GPT-4o-mini 호출 실패 — GLM-5 fallback")
+        answer = await self.call_glm(prompt)
         return answer
 
     # ── 컨텍스트 외 질문 감지 (추가 가드레일) ─
