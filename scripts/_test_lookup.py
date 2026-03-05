@@ -1,8 +1,10 @@
-import sys, os
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-sys.stdout.reconfigure(encoding='utf-8')
+import os
+import sys
 
-from app.services.live_drug_lookup import lookup_drug, _build_search_names
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.stdout.reconfigure(encoding="utf-8")
+
+from app.services.live_drug_lookup import _build_search_names, lookup_drug  # noqa: E402
 
 tests = ["키트루다 알려줘", "마이암부톨 주의사항", "엔허투 정보"]
 for q in tests:
@@ -15,4 +17,4 @@ for q in tests:
         print(f"  [성공] -> {name}")
         print(f"  컨텍스트 (앞 200자): {ctx[:200]}")
     else:
-        print(f"  [실패] 못 찾음")
+        print("  [실패] 못 찾음")
