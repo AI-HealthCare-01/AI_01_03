@@ -2,7 +2,7 @@
 POST /api/chat — RAG 기반 의약품 안내 API.
 
 Sprint01 통합 계약서 섹션 4 기준.
-LLM: GLM-5 (백엔드 reasoning) via Kilo AI
+LLM: GPT-4o-mini
 """
 
 import logging
@@ -52,7 +52,7 @@ async def chat(request: ChatRequest) -> ORJSONResponse:
         error = _llm_service.build_safe_response()
         return ORJSONResponse(content=error, status_code=422)
 
-    # ── Step 3: GLM-5 답변 생성 ──
+    # ── Step 3: LLM 답변 생성 ──
     try:
         raw_answer = await _llm_service.generate_answer(
             context=rag_context,

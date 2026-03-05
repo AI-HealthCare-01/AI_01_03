@@ -6,9 +6,7 @@ LLM Guide 서비스 — RAG 기반 의약품 안내.
 2. 임계값 미달 시 답변 생성 차단 (안전 응답 반환)
 3. System Prompt 조립 → LLM 호출 → 구조화 응답 생성
 
-LLM 구성:
-- 프론트 (채팅 응답): OpenAI GPT-4o-mini
-- 백엔드 (RAG reasoning/agent): Zhipu GLM-5 via Kilo AI
+LLM: OpenAI GPT-4o-mini
 """
 
 import logging
@@ -27,12 +25,7 @@ logger = logging.getLogger("llm_guide")
 
 _cfg = Config()
 
-# ── LLM 클라이언트 (OpenAI 호환) ─────────────
-_glm_client = AsyncOpenAI(
-    api_key=_cfg.GLM_API_KEY,
-    base_url=_cfg.GLM_BASE_URL,
-)
-
+# ── LLM 클라이언트 ─────────────────────────────
 _openai_client = AsyncOpenAI(
     api_key=_cfg.OPENAI_API_KEY,
 )
@@ -180,33 +173,8 @@ class LLMGuideService:
         }
 
     # ── LLM 호출 ─────────────────────────────────
-    async def call_glm(self, prompt: str) -> str:
-        """GLM-5 (백엔드 reasoning) 호출."""
-        resp = await _glm_client.chat.completions.create(
-            model=_cfg.GLM_MODEL,
-            messages=[{"role": "user", "content": prompt}],
-            max_tokens=_cfg.GLM_MAX_TOKENS,
-            temperature=_cfg.GLM_TEMPERATURE,
-        )
-        msg = resp.choices[0].message
-        content = msg.content or ""
-        if not content.strip():
-            # GLM-5 reasoning 모델: content가 비어있으면 reasoning 필드 사용
-            raw = msg.model_dump()
-            reasoning = raw.get("reasoning") or ""
-            if not reasoning:
-                # reasoning_details 배열에서 텍스트 추출
-                for detail in raw.get("reasoning_details") or []:
-                    if isinstance(detail, dict) and detail.get("text"):
-                        reasoning = detail["text"]
-                        break
-            if reasoning.strip():
-                logger.info("GLM-5: content 비어있음, reasoning 필드 사용 (%d자)", len(reasoning))
-                content = reasoning
-        return content
-
     async def call_openai(self, prompt: str) -> str:
-        """GPT-4o-mini (프론트 채팅 응답) 호출."""
+        """GPT-4o-mini 호출."""
         resp = await _openai_client.chat.completions.create(
             model=_cfg.OPENAI_MODEL,
             messages=[{"role": "user", "content": prompt}],
@@ -216,19 +184,9 @@ class LLMGuideService:
         return resp.choices[0].message.content or ""
 
     async def generate_answer(self, context: str, question: str) -> str:
-        """RAG 컨텍스트 + 질문으로 LLM 답변 생성.
-
-        GPT-4o-mini 우선 (빠름, ~2초), 실패 시 GLM-5 fallback.
-        """
+        """RAG 컨텍스트 + 질문으로 GPT-4o-mini 답변 생성."""
         prompt = self.build_prompt(context=context, question=question)
-        try:
-            answer = await self.call_openai(prompt)
-            if answer.strip():
-                return answer
-        except Exception:
-            logger.warning("GPT-4o-mini 호출 실패 — GLM-5 fallback")
-        answer = await self.call_glm(prompt)
-        return answer
+        return await self.call_openai(prompt)
 
     # ── 컨텍스트 외 질문 감지 (추가 가드레일) ─
     @staticmethod

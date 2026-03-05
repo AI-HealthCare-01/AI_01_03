@@ -65,17 +65,10 @@ class Config(BaseSettings):
     HIRA_MSUP_CMPN_MEFT_INFO_API_KEY_ENCODED: str = ""
     HIRA_MSUP_CMPN_MEFT_INFO_API_KEY_DECODED: str = ""
 
-    # 프론트 LLM (GPT-4o-mini — 채팅 응답)
+    # LLM (GPT-4o-mini)
     OPENAI_API_KEY: str = ""
     OPENAI_MODEL: str = "gpt-4o-mini"
     OPENAI_MAX_TOKENS: int = 2048
     OPENAI_TEMPERATURE: float = 0.3
-
-    # 백엔드 LLM (GLM-5 — RAG reasoning/agent)
-    GLM_API_KEY: str = ""
-    GLM_BASE_URL: str = "https://api.kilo.ai/api/gateway"
-    GLM_MODEL: str = "z-ai/glm-5"
-    GLM_MAX_TOKENS: int = 4096
-    GLM_TEMPERATURE: float = 0.3
 
     RAG_CONFIDENCE_THRESHOLD: float = 0.45

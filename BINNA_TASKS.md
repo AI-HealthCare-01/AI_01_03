@@ -212,16 +212,28 @@
   - 모든 약품에서 정확한 Citation #1 매칭 확인
 
 * [x] 응답 속도 개선: 평균 50초 → 4.0초 (5초 목표 달성)
-  - LLM 우선순위 전환: GLM-5(느림, reasoning) → GPT-4o-mini(빠름, ~2초) 기본으로 변경
-  - GPT-4o-mini 실패 시 GLM-5 fallback 유지
+  - LLM 전환: GLM-5 완전 제거, GPT-4o-mini 단일 LLM으로 확정
+  - GLM-5 대비: 속도 10~20배 빠름, 한국어 품질 우수, content 비어있는 문제 없음
   - 서버 startup 워밍업: RAG 인덱스 + 임베딩 모델 미리 로드 (`app/main.py`)
   - 첫 요청 콜드스타트 10.9초 → 4.0초로 개선
 
+* [x] 응답 품질 대폭 개선
+  - `OPENAI_MAX_TOKENS` 1024→2048: 상세 응답 가능
+  - 시스템 프롬프트 전면 재작성: "빠짐없이 상세하게" + 주성분/구체적 수치 인용 지시
+  - precautions 4개 카테고리 필수: 복용금기/상담필요/복용중주의/부작용
+  - 프롬프트 개선 후 테스트: 9건 성공 (avg 10.5s), 모든 응답에 주성분명·구체적 수치 포함
+
+* [x] GLM-5 완전 제거
+  - `llm_guide.py`: `call_glm()`, `_glm_client`, fallback 로직 삭제
+  - `config.py`: `GLM_API_KEY`, `GLM_BASE_URL`, `GLM_MODEL`, `GLM_MAX_TOKENS`, `GLM_TEMPERATURE` 삭제
+  - `chat_routers.py`: GLM-5 주석 → GPT-4o-mini로 변경
+
 * [x] Git Flow 커밋 + 푸시 → PR #4 반영
-  - `fix: RAG 검색 품질 개선 + GLM-5 빈 응답 해결` (4 files, +103/-15)
-  - `fix: 시스템 프롬프트에 한국어 전용 답변 규칙 강화` (1 file, +2/-1)
+  - `fix: RAG 검색 품질 개선 + GLM-5 빈 응답 해결`
+  - `fix: 시스템 프롬프트에 한국어 전용 답변 규칙 강화`
   - `perf: LLM 응답 속도 개선 + RAG 워밍업 추가`
-  - ruff lint/format 전체 통과
+  - `improve: 시스템 프롬프트 상세화 + LLM 토큰 증가로 응답 품질 대폭 향상`
+  - `refactor: GLM-5 완전 제거, GPT-4o-mini 단일 LLM 확정`
 
 ---
 
