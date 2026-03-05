@@ -68,7 +68,7 @@ class Config(BaseSettings):
     # LLM (GPT-4o-mini)
     OPENAI_API_KEY: str = ""
     OPENAI_MODEL: str = "gpt-4o-mini"
-    OPENAI_MAX_TOKENS: int = 2048
+    OPENAI_MAX_TOKENS: int = 1024
     OPENAI_TEMPERATURE: float = 0.3
 
     RAG_CONFIDENCE_THRESHOLD: float = 0.45
