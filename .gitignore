@@ -37,9 +37,8 @@ cls_dataset_itemseq/
 # vision assets / datasets
 ai_worker/vision/assets/
 
-# Generated data (large files)
+# Generated data (large files — .gz 압축본으로 git 관리)
 data/knowledge_base.json
-data/faiss_index.bin
 data/faiss_meta.json
 data/_checkpoint.json
 data/benchmark_results.json

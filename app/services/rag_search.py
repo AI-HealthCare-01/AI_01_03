@@ -56,6 +56,18 @@ class RAGSearchService:
 
     def load(self) -> None:
         """FAISS 인덱스 + 메타데이터 + 임베딩 모델을 로드합니다."""
+        meta_gz = META_PATH.with_suffix(".json.gz")
+
+        # .gz 있으면 자동 압축 해제
+        if not META_PATH.exists() and meta_gz.exists():
+            import gzip
+            import shutil
+
+            logger.info("faiss_meta.json.gz → 압축 해제 중...")
+            with gzip.open(meta_gz, "rb") as f_in, META_PATH.open("wb") as f_out:
+                shutil.copyfileobj(f_in, f_out)
+            logger.info("압축 해제 완료: %s", META_PATH)
+
         if not INDEX_PATH.exists() or not META_PATH.exists():
             logger.warning("FAISS 인덱스 없음 — Mock 모드로 동작합니다: %s", INDEX_PATH)
             return
