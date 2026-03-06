@@ -11,6 +11,7 @@ class Prescription(models.Model):
 
     class Meta:
         table = "prescriptions"
+        indexes = (("user_id", "created_at"),)
 
 
 class PrescriptionItem(models.Model):
@@ -24,3 +25,7 @@ class PrescriptionItem(models.Model):
 
     class Meta:
         table = "prescription_items"
+        indexes = (
+            ("prescription_id",),
+            ("medication_id",),
+        )
