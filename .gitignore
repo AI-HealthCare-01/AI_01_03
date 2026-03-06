@@ -26,6 +26,7 @@ envs/
 *.pth
 *.onnx
 *.zip
+*.vsix
 tmp_uploads/
 bus.jpg
 dataset/
