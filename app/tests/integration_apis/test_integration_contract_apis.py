@@ -1,11 +1,20 @@
+import json
+import tempfile
+from pathlib import Path
+from unittest.mock import AsyncMock, patch
+
 from httpx import ASGITransport, AsyncClient
 from starlette import status
 from tortoise.contrib.test import TestCase
 
+from app.dtos.vision import VisionCandidate as VisionDrugCandidate
+from app.dtos.vision import VisionDetection
+from app.dtos.vision import VisionIdentifyResponse as VisionPipelineResponse
 from app.main import app
 from app.models.prescriptions import Prescription, PrescriptionItem
 from app.models.schedules import MedicationSchedule
 from app.models.users import Gender, User
+from app.services.vision import VisionService, VisionServiceError
 
 
 class TestIntegrationContractAPIs(TestCase):
@@ -25,6 +34,104 @@ class TestIntegrationContractAPIs(TestCase):
             response = await client.post("/api/vision/identify", json={"confidence": 0.2})
         assert response.status_code == status.HTTP_200_OK
         assert response.json() == {"success": False, "candidates": [], "error_code": "LOW_CONFIDENCE"}
+
+    async def test_vision_identify_image_upload_keeps_contract_shape(self):
+        mock_response = VisionPipelineResponse(
+            detections=[
+                VisionDetection(
+                    bbox=[12, 20, 120, 90],
+                    candidates=[
+                        VisionDrugCandidate(drug_name="아스피린", confidence=0.92),
+                        VisionDrugCandidate(drug_name="타이레놀", confidence=0.81),
+                    ],
+                )
+            ],
+            latency_ms=320,
+            disclaimer="본 서비스는 복약 보조 수단입니다.",
+        )
+        files = {"image": ("pill.jpg", b"fake-image", "image/jpeg")}
+
+        with patch.object(VisionService, "identify", new=AsyncMock(return_value=mock_response)):
+            async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+                response = await client.post("/api/vision/identify", files=files)
+
+        assert response.status_code == status.HTTP_200_OK
+        body = response.json()
+        assert set(body.keys()) == {"success", "candidates", "error_code"}
+        assert body["success"] is True
+        assert body["error_code"] is None
+        assert len(body["candidates"]) >= 1
+        assert body["candidates"][0]["medication_id"] == "ASPIRIN_100"
+        assert body["candidates"][0]["confidence"] == 0.92
+
+    async def test_vision_identify_image_upload_low_confidence(self):
+        mock_response = VisionPipelineResponse(
+            detections=[
+                VisionDetection(
+                    bbox=[0, 0, 100, 100],
+                    candidates=[
+                        VisionDrugCandidate(drug_name="알수없음", confidence=0.41),
+                    ],
+                )
+            ],
+            latency_ms=150,
+            disclaimer="본 서비스는 복약 보조 수단입니다.",
+        )
+        files = {"image": ("pill.jpg", b"fake-image", "image/jpeg")}
+
+        with patch.object(VisionService, "identify", new=AsyncMock(return_value=mock_response)):
+            async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+                response = await client.post("/api/vision/identify", files=files)
+
+        assert response.status_code == status.HTTP_200_OK
+        assert response.json() == {"success": False, "candidates": [], "error_code": "LOW_CONFIDENCE"}
+
+    async def test_vision_identify_image_upload_pipeline_error(self):
+        files = {"image": ("pill.jpg", b"fake-image", "image/jpeg")}
+        side_effect = VisionServiceError(
+            error_code="VISION_TIMEOUT",
+            message="Vision 모델 응답 시간이 초과되었습니다.",
+            status_code=504,
+        )
+        with patch.object(VisionService, "identify", new=AsyncMock(side_effect=side_effect)):
+            async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+                response = await client.post("/api/vision/identify", files=files)
+
+        assert response.status_code == status.HTTP_200_OK
+        assert response.json() == {"success": False, "candidates": [], "error_code": "VISION_TIMEOUT"}
+
+    async def test_vision_identify_image_upload_applies_medication_map(self):
+        mock_response = VisionPipelineResponse(
+            detections=[
+                VisionDetection(
+                    bbox=[0, 0, 100, 100],
+                    candidates=[VisionDrugCandidate(drug_name="K-040221", confidence=0.96)],
+                )
+            ],
+            latency_ms=210,
+            disclaimer="본 서비스는 복약 보조 수단입니다.",
+        )
+        files = {"image": ("pill.jpg", b"fake-image", "image/jpeg")}
+
+        with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False) as tmp:
+            tmp.write(json.dumps({"K-040221": "TYLENOL_500"}, ensure_ascii=False))
+            map_path = tmp.name
+
+        try:
+            with (
+                patch.object(VisionService, "identify", new=AsyncMock(return_value=mock_response)),
+                patch("app.apis.integration_routers.config.VISION_MEDICATION_MAP_PATH", map_path),
+            ):
+                async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+                    response = await client.post("/api/vision/identify", files=files)
+        finally:
+            Path(map_path).unlink(missing_ok=True)
+
+        assert response.status_code == status.HTTP_200_OK
+        body = response.json()
+        assert body["success"] is True
+        assert body["error_code"] is None
+        assert body["candidates"][0]["medication_id"] == "TYLENOL_500"
 
     async def test_ocr_parse_failure_shape(self):
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:

@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+import json
 import re
 from datetime import timedelta
+from pathlib import Path
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Query, Request
+from fastapi import APIRouter, Depends, File, Query, Request, UploadFile
 
+from app.core import config
 from app.dtos.integration import (
     ChatFailureResponse,
     ChatRequest,
@@ -26,11 +29,59 @@ from app.dtos.integration import (
 from app.models.schedules import MedicationSchedule
 from app.services.ocr import OCRService
 from app.services.prescription_flow import PrescriptionFlowService
+from app.services.vision import VisionService, VisionServiceError
 
 integration_router = APIRouter(prefix="/api", tags=["integration"])
 
 _sentence_splitter = re.compile(r"(?<=[.!?])\s+")
 _http_url_regex = re.compile(r"^https?://", re.IGNORECASE)
+_non_medication_id_regex = re.compile(r"[^A-Z0-9]+")
+_medication_aliases = {
+    "타이레놀": "TYLENOL_500",
+    "아스피린": "ASPIRIN_100",
+    "게보린": "GEBORIN_500",
+}
+
+
+def _normalize_medication_id(value: str) -> str:
+    normalized = _non_medication_id_regex.sub("_", value.upper()).strip("_")
+    normalized = re.sub(r"_+", "_", normalized)
+    if not normalized:
+        return "UNKNOWN_PILL"
+    if "_" not in normalized:
+        return f"{normalized}_PILL"
+    return normalized
+
+
+def _load_vision_medication_map() -> dict[str, str]:
+    path = (config.VISION_MEDICATION_MAP_PATH or "").strip()
+    if not path:
+        return {}
+
+    try:
+        payload = json.loads(Path(path).read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+
+    if not isinstance(payload, dict):
+        return {}
+
+    mapped: dict[str, str] = {}
+    for source_label, medication_id in payload.items():
+        if not isinstance(source_label, str) or not isinstance(medication_id, str):
+            continue
+        if not medication_id.strip():
+            continue
+        key_variants = {
+            source_label.strip(),
+            source_label.strip().upper(),
+            _normalize_medication_id(source_label),
+        }
+        target = _normalize_medication_id(medication_id)
+        for key in key_variants:
+            if key:
+                mapped[key] = target
+    return mapped
 
 
 def _tts_segments(answer: str) -> list[str]:
@@ -56,8 +107,30 @@ def _format_time_value(value: object) -> str:
     return str(value)
 
 
+def _to_medication_id(raw_name: str, medication_map: dict[str, str] | None = None) -> str:
+    name = raw_name.strip()
+    if not name:
+        return "UNKNOWN_PILL"
+
+    if medication_map:
+        normalized_name = _normalize_medication_id(name)
+        mapped = medication_map.get(name) or medication_map.get(name.upper()) or medication_map.get(normalized_name)
+        if mapped:
+            return _normalize_medication_id(mapped)
+
+    for alias, medication_id in _medication_aliases.items():
+        if alias in name:
+            return medication_id
+
+    return _normalize_medication_id(name)
+
+
 @integration_router.post("/vision/identify", response_model=VisionIdentifyResponse)
-async def vision_identify(request: Request) -> VisionIdentifyResponse:
+async def vision_identify(
+    request: Request,
+    vision_service: Annotated[VisionService, Depends(VisionService)],
+    image: Annotated[UploadFile | None, File()] = None,
+) -> VisionIdentifyResponse:
     payload = {}
     try:
         if request.headers.get("content-type", "").startswith("application/json"):
@@ -66,17 +139,55 @@ async def vision_identify(request: Request) -> VisionIdentifyResponse:
         payload = {}
 
     req = VisionIdentifyRequest.model_validate(payload)
-
     if req.mock_error_code:
         return VisionIdentifyResponse(success=False, candidates=[], error_code=req.mock_error_code)
 
-    confidence = 0.93 if req.confidence is None else float(req.confidence)
-    if confidence < 0.8:
+    # E2E 계약 호환: 이미지 없이 JSON 요청이 오면 기존 mock 동작 유지.
+    if image is None:
+        confidence = 0.93 if req.confidence is None else float(req.confidence)
+        if confidence < 0.8:
+            return VisionIdentifyResponse(success=False, candidates=[], error_code="LOW_CONFIDENCE")
+        medication_id = req.medication_id or "TYLENOL_500"
+        return VisionIdentifyResponse(
+            success=True,
+            candidates=[VisionCandidate(medication_id=medication_id, confidence=confidence)],
+            error_code=None,
+        )
+
+    image_bytes = await image.read()
+    try:
+        vision_result = await vision_service.identify(
+            image_bytes=image_bytes,
+            content_type=image.content_type,
+        )
+    except VisionServiceError as exc:
+        return VisionIdentifyResponse(success=False, candidates=[], error_code=exc.error_code)
+    except Exception:
+        return VisionIdentifyResponse(success=False, candidates=[], error_code="VISION_INTERNAL_ERROR")
+
+    merged_confidence: dict[str, float] = {}
+    medication_map = _load_vision_medication_map()
+    for detection in vision_result.detections:
+        for candidate in detection.candidates:
+            medication_id = _to_medication_id(candidate.drug_name, medication_map)
+            existing = merged_confidence.get(medication_id)
+            if existing is None or candidate.confidence > existing:
+                merged_confidence[medication_id] = candidate.confidence
+
+    sorted_candidates = sorted(merged_confidence.items(), key=lambda item: item[1], reverse=True)
+    if not sorted_candidates:
         return VisionIdentifyResponse(success=False, candidates=[], error_code="LOW_CONFIDENCE")
 
-    medication_id = req.medication_id or "TYLENOL_500"
-    candidate = VisionCandidate(medication_id=medication_id, confidence=confidence)
-    return VisionIdentifyResponse(success=True, candidates=[candidate], error_code=None)
+    top_confidence = sorted_candidates[0][1]
+    if top_confidence < 0.8:
+        return VisionIdentifyResponse(success=False, candidates=[], error_code="LOW_CONFIDENCE")
+
+    top_k = max(1, config.VISION_TOP_K)
+    candidates = [
+        VisionCandidate(medication_id=medication_id, confidence=confidence)
+        for medication_id, confidence in sorted_candidates[:top_k]
+    ]
+    return VisionIdentifyResponse(success=True, candidates=candidates, error_code=None)
 
 
 @integration_router.post("/ocr/parse", response_model=OCRParseResponse)
