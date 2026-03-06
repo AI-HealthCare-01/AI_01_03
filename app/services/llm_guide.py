@@ -170,6 +170,7 @@ class LLMGuideService:
             "tts_segments": self.split_tts_segments(full_text),
             "citations": citations,
             "disclaimer": DISCLAIMER,
+            "error_code": None,
         }
 
     # ── LLM 호출 ─────────────────────────────────
