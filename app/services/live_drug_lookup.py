@@ -131,7 +131,9 @@ def _build_search_names(drug_name: str) -> list[str]:
                 stripped = base[m.end() :]
                 add(stripped)
                 # 제조사 제거 후 용량도 제거
-                stripped_no_dose = re.sub(r"\s*[\d./-]+\s*(mg|MG|밀리그.*|IU|mcg|MCG|μg|mL|ML)\s*$", "", stripped).strip()
+                stripped_no_dose = re.sub(
+                    r"\s*[\d./-]+\s*(mg|MG|밀리그.*|IU|mcg|MCG|μg|mL|ML)\s*$", "", stripped
+                ).strip()
                 stripped_no_dose = re.sub(r"\s+[\d./-]+\s*$", "", stripped_no_dose).strip()
                 add(stripped_no_dose)
 
