@@ -80,17 +80,26 @@ def build_search_names(product_name: str) -> list[str]:
 
     no_paren = re.sub(r"\s*\([^)]*\)", "", name).strip()
     no_qty = re.sub(r"\s+\d+[TCc정캡].*$", "", no_paren).strip()
-    no_dose = re.sub(r"\s*\d+\s*(mg|MG|밀리그.*)\s*$", "", no_qty).strip()
+    # 소수점/분수/복합용량 포함 (2.5mg, 25-250mg, 50/500mg)
+    no_dose = re.sub(r"\s*[\d./-]+\s*(mg|MG|밀리그.*|IU|mcg|MCG|μg|mL|ML)\s*$", "", no_qty).strip()
+    # 숫자만 남은 경우 추가 제거 (e.g. "정 2." → "정")
+    no_dose = re.sub(r"\s+[\d./-]+\s*$", "", no_dose).strip()
 
     add(no_paren)
     add(no_qty)
     add(no_dose)
 
-    # 제조사 prefix 제거
-    if len(no_qty) > 4:
-        match = re.match(r"^[가-힣]{2,4}(?=.{3,})", no_qty)
-        if match:
-            add(no_qty[match.end() :])
+    # 제조사 prefix 제거 (no_qty, no_dose 모두 적용)
+    for base in (no_qty, no_dose):
+        if len(base) > 4:
+            match = re.match(r"^[가-힣]{2,4}(?=.{3,})", base)
+            if match:
+                stripped = base[match.end() :]
+                add(stripped)
+                # 제조사 제거 후 용량도 제거
+                stripped_no_dose = re.sub(r"\s*[\d./-]+\s*(mg|MG|밀리그.*|IU|mcg|MCG|μg|mL|ML)\s*$", "", stripped).strip()
+                stripped_no_dose = re.sub(r"\s+[\d./-]+\s*$", "", stripped_no_dose).strip()
+                add(stripped_no_dose)
 
     return candidates
 
