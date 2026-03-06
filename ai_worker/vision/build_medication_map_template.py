@@ -40,10 +40,7 @@ def build_template(labels_path: Path, out_path: Path, *, fill_identity: bool = F
     if not isinstance(payload, list) or not all(isinstance(label, str) for label in payload):
         raise ValueError("labels.json must be a JSON array of class label strings")
 
-    template = {
-        label: (_normalize_medication_id(label) if fill_identity else "")
-        for label in payload
-    }
+    template = {label: (_normalize_medication_id(label) if fill_identity else "") for label in payload}
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text(json.dumps(template, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     print(f"[DONE] wrote template: {out_path.resolve()}")

@@ -1,4 +1,4 @@
-﻿*/__pycache__/
+*/__pycache__/
 *.py[oc]
 build/
 dist/
@@ -12,22 +12,41 @@ wheels/
 .coverage
 *.coverage
 .coverage.*
-요약(기술문서등)/.claude/
+요약(기술문서등)/
+.claude/
 envs/
 
+# macOS / IDE
 .DS_Store
 .pytest_cache/
 .mypy_cache/
+
+# Model / dataset files
 *.pt
+*.pth
+*.onnx
+*.zip
+*.vsix
 tmp_uploads/
 bus.jpg
 dataset/
-# vision assets / datasets
-ai_worker/vision/assets/
 tmp/
 cls_data/
 cls_dataset/
 cls_dataset_itemseq/
-*.zip
-*.pth
-*.onnx
+
+# vision assets / datasets
+ai_worker/vision/assets/
+
+# Generated data (large files — .gz 압축본으로 git 관리)
+data/knowledge_base.json
+data/faiss_meta.json
+data/_checkpoint.json
+data/benchmark_results.json
+nul
+
+# Claude Prompts
+claude_prompts/
+
+# BINNA_TASKS.md
+BINNA_TASKS.md

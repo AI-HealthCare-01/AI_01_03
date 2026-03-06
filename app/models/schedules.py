@@ -18,3 +18,8 @@ class MedicationSchedule(models.Model):
 
     class Meta:
         table = "medication_schedules"
+        indexes = (
+            ("user_id", "created_at", "id"),
+            ("user_id", "is_completed"),
+            ("prescription_item_id",),
+        )

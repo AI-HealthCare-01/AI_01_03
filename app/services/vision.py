@@ -264,10 +264,7 @@ class VisionService:
                     messages=[
                         {
                             "role": "system",
-                            "content": (
-                                "너는 알약 이미지 분류 어시스턴트다. "
-                                "반드시 JSON object만 반환하라."
-                            ),
+                            "content": ("너는 알약 이미지 분류 어시스턴트다. 반드시 JSON object만 반환하라."),
                         },
                         {
                             "role": "user",
