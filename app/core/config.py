@@ -72,3 +72,13 @@ class Config(BaseSettings):
     OPENAI_TEMPERATURE: float = 0.3
 
     RAG_CONFIDENCE_THRESHOLD: float = 0.45
+
+    # Kakao OAuth
+    KAKAO_CLIENT_ID: str = ""
+    KAKAO_CLIENT_SECRET: str = ""
+    KAKAO_REDIRECT_URI: str = "http://localhost:5173/auth/kakao/callback"
+
+    # Google OAuth
+    GOOGLE_CLIENT_ID: str = ""
+    GOOGLE_CLIENT_SECRET: str = ""
+    GOOGLE_REDIRECT_URI: str = "http://localhost:5173/auth/google/callback"
