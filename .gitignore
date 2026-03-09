@@ -50,3 +50,6 @@ claude_prompts/
 
 # BINNA_TASKS.md
 BINNA_TASKS.md
+
+# Training artifacts under runs/
+runs/
