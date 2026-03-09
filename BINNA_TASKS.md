@@ -1,0 +1,317 @@
+# 👤 김빛나 (RAG·LLM) — feature/llm-guide (현재 브랜치: binna/llm)
+
+## ✅ DoD (개발 완료 기준)
+
+* [x] 지식문서 생성
+* [x] FAISS 인덱싱 완료
+* [x] `/api/chat` 동작 (FAISS 실연동 완료)
+* [x] 임계값 기반 안전응답 구현
+* [x] 출처 + 면책 고정 포함
+
+---
+
+## 📅 03/02(월)
+
+### 오전
+* [x] System Prompt 초안 작성
+  - `app/prompts/system_prompt.py`
+  - 역할 정의, 5개 핵심 규칙(컨텍스트 기반, 면책, 출력 형식, 스타일, 금지사항)
+  - `DISCLAIMER`, `SAFE_FALLBACK_ANSWER` 상수 정의
+  - `build_system_prompt()`, `build_chat_prompt(context, question)` 함수
+
+### 오후
+* [x] 컨텍스트 외 답변 금지 규칙 고정
+  - `app/prompts/system_prompt.py` — 프롬프트 내 "Context에 없는 내용은 절대 답변하지 마세요" 규칙
+  - `app/services/llm_guide.py` — `contains_out_of_scope_marker()` 가드레일 메서드
+
+### 야간
+* [x] 출력 포맷 템플릿 정의
+  - `app/dtos/chat.py` — `ChatRequest`, `ChatResponse`, `ChatErrorResponse`, `AnswerSections`, `Citation`
+  - 4섹션 구조: summary, dosage, precautions, tips
+  - Sprint01 통합 계약서 섹션 4 스펙 준수
+
+---
+
+## 📅 03/03(화)
+
+### 오전
+* [x] 식약처 API 파싱 스크립트 작성
+  - `scripts/fetch_drug_info.py`
+  - e약은요 API (`getDrbEasyDrugList`) 연동 — 일반의약품 상세 정보 수집
+  - Excel 양쪽 시트(1000+정보, 4000+정보) 읽기 지원 — 총 4,998건
+  - 다단계 검색 전략 (괄호 제거, 숫자/단위 제거, 핵심 약명 추출)
+  - 체크포인트 저장/재개(`--resume`) 지원
+  - API 필드 매핑: efcyQesitm→efficacy, useMethodQesitm→dosage, atpnQesitm→precautions 등
+
+### 오후
+* [x] 지식 JSON 생성 → `data/knowledge_base.json`
+  - 전체 4,998건 수집 완료 (API 데이터 756건, 15.1%)
+  - FAISS 인덱스 재빌드 완료: 758 벡터 (유효 청크)
+  - 허가정보 API 승인됨 — 추후 전문의약품 보강 가능
+
+### 야간
+* [x] 데이터 라이선스 리스크 기록
+
+### 추가 완료 항목 (03/03)
+* [x] .env 환경변수 구조 설계 및 API 키 등록
+  - `.env` — OCR, 식약처(e약은요 + 허가정보), OpenAI, GLM-5 키 관리
+  - `app/core/config.py` — `Config` 클래스에 전체 설정 반영
+* [x] GLM-5 (Zhipu AI) API 연동 완료
+  - Kilo AI Gateway 경유: `https://api.kilo.ai/api/gateway`
+  - 모델 ID: `z-ai/glm-5` (reasoning 모델, content + reasoning 필드 반환)
+  - `app/services/llm_guide.py` — `AsyncOpenAI` 클라이언트 2개 (GLM-5 + GPT-4o-mini)
+  - `call_glm()`, `call_openai()`, `generate_answer()` 메서드 구현
+* [x] `/api/chat` 엔드포인트 LLM 실연동
+  - `app/apis/v1/chat_routers.py` — mock 응답 → GLM-5 실호출로 교체
+  - 파이프라인: FAISS검색(mock) → 임계값검증 → GLM-5 답변생성 → 안전응답감지 → 응답조립
+* [x] LLM 이중 구조 확정
+  - 프론트 (채팅 응답): GPT-4o-mini (`OPENAI_*` 설정)
+  - 백엔드 (RAG reasoning/agent): GLM-5 (`GLM_*` 설정)
+
+---
+
+## 📅 03/04(수)
+
+### 오전
+* [x] Chunk 규칙 확정
+  - 약품 1건 = 문서 1개 (전체 텍스트 필드 결합)
+  - 헤더: `[약품명] 이름 (카테고리) — 제조사`
+  - 본문 섹션: 효능/효과, 용법/용량, 주의사항, 경고, 상호작용, 부작용, 보관법
+  - 빈 필드 제외하여 노이즈 최소화
+
+### 오후
+* [x] 임베딩 → FAISS 인덱스 생성
+  - 모델: `paraphrase-multilingual-MiniLM-L12-v2` (384차원, 한국어 지원)
+  - 인덱스: `IndexFlatIP` (정규화 벡터 → Inner Product = Cosine Similarity)
+  - `scripts/build_faiss_index.py` — 빌드 스크립트
+  - `app/services/rag_search.py` — 런타임 검색 서비스 (싱글톤)
+  - `chat_routers.py` — Mock 제거, 실제 FAISS 검색 연동 완료
+
+### 야간
+* [x] 검색 점수 기반 임계값 설정
+  - cosine similarity 기반 (높을수록 유사, 0~1 범위)
+  - 임계값: 0.45 (config.py `RAG_CONFIDENCE_THRESHOLD`)
+  - "타이레놀 복용법" → 0.76, "두통약" → 0.69, 경계 사례 → 0.44
+
+---
+
+## 📅 03/05(목)
+
+### 오전
+* [x] LLM 호출 래퍼 구현 → (03/03에 앞당겨 완료)
+
+### 오후
+* [x] `/api/chat` 구현 → (03/03에 앞당겨 완료)
+
+### 야간
+* [x] 안전응답 + Draft PR 제출
+  - 안전응답 2단계 검증: RAG 임계값(Step 2) + LLM 안전문구 감지(Step 4)
+  - RAG 검색 없음/임계값 미달 → `422 LOW_RAG_CONFIDENCE`
+  - LLM 스스로 범위 밖 판단 → `422 LOW_RAG_CONFIDENCE`
+
+---
+
+## 📅 03/06(금)
+
+### 오전
+* [x] UI PR 리뷰
+
+### 오후
+* [x] 문장 단위 분할(TTS 세그먼트)
+  - `llm_guide.py:split_tts_segments()` 개선
+  - 3단계 분할: 줄바꿈 → 문장부호(. ! ? 。) → 쉼표(200자 초과 시)
+  - 불릿 마커(-, *, •) 자동 제거
+
+### 야간
+* [x] 응답 시간 측정(5초 목표)
+  - `scripts/benchmark_chat.py` 벤치마크 스크립트 작성
+  - RAG 검색: avg 23ms (첫 쿼리 435ms 모델 로딩 포함)
+  - 5초 이내 응답 충분히 달성 가능 (RAG 20ms + LLM ~2-3초)
+
+---
+
+## 📅 03/07(토)
+
+### 오전
+* [x] develop 병합
+  - binna/llm → develop 병합 완료 (.gitignore 충돌 해결)
+  - develop 브랜치에 RAG+LLM 파이프라인 전체 반영됨
+
+### 오후
+* [x] E2E 질문 → 답변 → TTS 확인
+  - RAG 검색: 정상 (타이레놀 0.71, 게보린 0.65, 훼스탈 0.67)
+  - LLM 호출: 정상 (GLM-5 via Kilo AI — 응답 ~50초, 지연 이슈 존재)
+  - TTS 세그먼트: 3단계 분할 정상 (5개 세그먼트 생성 확인)
+  - 응답 조립: sections(4), citations, disclaimer 정상 포함
+  - **이슈**: GLM-5 ~50초 지연 (5초 목표 초과), 게보린 false negative
+
+### 야간
+* [x] 출처 표기 규칙 확정
+  - 응답 내 `citations` 배열: `[{source, title}]`
+  - `source`: "식약처 의약품안전나라" (고정)
+  - `title`: 검색된 약품명 (FAISS Top-K 결과)
+  - `disclaimer`: 의료 면책 조항 항상 포함 (DISCLAIMER 상수)
+  - 공공누리 제4유형 출처 표기 준수
+
+---
+
+## 📅 03/08(일)
+
+### 오전
+* [x] 평가 질문 20개 구성
+  - `scripts/benchmark_chat.py` 내 `EVAL_QUESTIONS` (20개)
+  - 카테고리: specific(5), symptom(5), ambiguous(2), edge(3), out_of_scope(5)
+
+### 오후
+* [x] 오답/환각 패턴 정리
+  - RAG-only 벤치마크 결과: 14/20 정확도 (70%)
+  - **패턴 1: 미등록 약품** — "판콜에이" score=0.43 (인덱스에 없음 → 안전응답 정상)
+  - **패턴 2: 모호한 질문** — "이 약 먹어도 돼?" score=0.71 (의도 불명확 → RAG 오매칭)
+  - **패턴 3: 범위 밖 고점수** — "피자 추천", "파이썬 코드" score=0.54~0.64 (의미적 유사도 과대)
+  - **대응**: Step 4 LLM 가드레일이 2차 필터링 (Context 외 답변 금지 규칙)
+  - 결과 저장: `data/benchmark_results.json`
+
+### 야간
+* [x] OpenAI 사용량 모니터링 포인트 정리
+  - GLM-5 (Kilo AI): 요청당 max_tokens=4096, temperature=0.3
+  - GPT-4o-mini: 요청당 max_tokens=1024, temperature=0.3
+  - 모니터링 포인트: `llm_guide.py:call_glm()`, `call_openai()`
+  - 비용 추적: Kilo AI 대시보드 + OpenAI Usage 페이지
+
+---
+
+## 📅 03/09(월) — OAuth 소셜 로그인 연동
+
+### 야간 (00:00 ~)
+* [x] 카카오 로그인 백엔드 연동
+  - 카카오 REST API 키, 클라이언트 시크릿 `.env` 등록
+  - `app/core/config.py`에 카카오 OAuth 설정 추가
+  - `auth_routers.py`에 `/auth/kakao` 및 `/auth/kakao/callback` 엔드포인트 도메인 구현
+  - 사업자 인증(이메일 필수 동의) 없이 카카오 고유 ID(`kakao_{id}@kakao.oauth`)를 가상 이메일로 사용하여 자동 회원가입 로직 연결 (`get_or_create_oauth_user`)
+  - 로그인 성공 후 JWT 기반 토큰(`access_token`, `refresh_token` 쿠키) 자동 발급
+
+* [x] 구글 로그인 백엔드 연동
+  - 구글 Cloud Console 프로젝트 생성 및 OAuth 클라이언트 ID/Secret 발급 안내/설정
+  - `.env` 및 `config.py`에 구글 OAuth 설정 추가
+  - `auth_routers.py`에 `/auth/google` 및 `/auth/google/callback` 엔드포인트 도메인 구현
+  - 구글에서 제공하는 검증된 이메일을 기반으로 자동 회원가입 로직 연결 (`get_or_create_oauth_user`)
+  - 로그인 완료 시 카카오와 동일하게 JWT 토큰 발급 처리
+
+---
+
+## 📅 03/05(목) — 품질 개선 + E2E 검증
+
+### 오전
+* [x] RAG 하이브리드 검색 구현 (키워드 + 벡터 결합)
+  - `app/services/rag_search.py` — `_extract_core_name()`, `_keyword_match_indices()` 추가
+  - 약품명 키워드 부스팅 (name_boost=0.5): FAISS 벡터 검색에 키워드 매칭 점수 가산
+  - 제형명 접미사 제거 (정, 캡슐, 시럽, 서방정 등): "타이레놀정500mg" → "타이레놀"
+  - 양방향 키워드 매칭: 약품 코어명→쿼리 포함 또는 쿼리 토큰→약품 코어명 포함
+  - **게보린 검색 개선**: cosine sim 0.30 → 하이브리드 0.80 (1위로 상승)
+
+* [x] GLM-5 빈 응답 문제 해결
+  - `app/services/llm_guide.py` — `call_glm()` 수정
+  - GLM-5 reasoning 모델이 content를 비워두고 `reasoning` 필드에 답변 배치하는 문제
+  - `msg.model_dump()["reasoning"]` 및 `reasoning_details` fallback 추가
+  - `max_tokens` 2048→4096 증가: reasoning 완료 후 content 생성 보장
+  - GPT-4o-mini fallback: GLM-5 빈 응답 시 자동 전환
+
+* [x] 섹션 파싱 + 프롬프트 개선
+  - `llm_guide.py:parse_sections()` — regex 유연화 (markdown bold 대응), 전체 텍스트 summary fallback
+  - `system_prompt.py` — 한국어 전용 답변 규칙 강화 ("영어, 중국어 등 다른 언어를 섞지 마세요")
+
+* [x] 신규 API 키 4종 등록
+  - `app/core/config.py` — DrugPrdtPrmsnInfoService07, DURPrdlstInfoService03, msupUserInfoService1.2, msupCmpnMeftInfoService
+
+### 오후
+* [x] E2E 스트레스 테스트 12건 통과
+  - 약품 검색 9건 성공: 게보린, 타이레놀, 애드빌, 우루사, 부루펜, 아로나민, 판피린, 마그밀, 낙센
+  - 가드레일 차단 3건 정상: 후시딘(데이터 없음), 날씨, 비트코인
+  - 실패 0건
+  - 모든 약품에서 정확한 Citation #1 매칭 확인
+
+* [x] 응답 속도 개선: 평균 50초 → 4.0초 (5초 목표 달성)
+  - LLM 전환: GLM-5 완전 제거, GPT-4o-mini 단일 LLM으로 확정
+  - GLM-5 대비: 속도 10~20배 빠름, 한국어 품질 우수, content 비어있는 문제 없음
+  - 서버 startup 워밍업: RAG 인덱스 + 임베딩 모델 미리 로드 (`app/main.py`)
+  - 첫 요청 콜드스타트 10.9초 → 4.0초로 개선
+
+* [x] 응답 품질 대폭 개선
+  - `OPENAI_MAX_TOKENS` 1024→2048: 상세 응답 가능
+  - 시스템 프롬프트 전면 재작성: "빠짐없이 상세하게" + 주성분/구체적 수치 인용 지시
+  - precautions 4개 카테고리 필수: 복용금기/상담필요/복용중주의/부작용
+  - 프롬프트 개선 후 테스트: 9건 성공 (avg 10.5s), 모든 응답에 주성분명·구체적 수치 포함
+
+* [x] GLM-5 완전 제거
+  - `llm_guide.py`: `call_glm()`, `_glm_client`, fallback 로직 삭제
+  - `config.py`: `GLM_API_KEY`, `GLM_BASE_URL`, `GLM_MODEL`, `GLM_MAX_TOKENS`, `GLM_TEMPERATURE` 삭제
+  - `chat_routers.py`: GLM-5 주석 → GPT-4o-mini로 변경
+
+* [x] Git Flow 커밋 + 푸시 → PR #4 반영
+  - `fix: RAG 검색 품질 개선 + GLM-5 빈 응답 해결`
+  - `fix: 시스템 프롬프트에 한국어 전용 답변 규칙 강화`
+  - `perf: LLM 응답 속도 개선 + RAG 워밍업 추가`
+  - `improve: 시스템 프롬프트 상세화 + LLM 토큰 증가로 응답 품질 대폭 향상`
+  - `refactor: GLM-5 완전 제거, GPT-4o-mini 단일 LLM 확정`
+
+---
+
+## ⚠ 리스크
+
+### 1. 데이터 라이선스 — ✅ 확인 완료
+
+| 항목 | 내용 |
+|------|------|
+| **API** | 식약처 e약은요 (`15075057`), 의약품 허가정보 (`15095675`) |
+| **라이선스** | 공공누리 제4유형 (출처표시-상업적이용금지-변경금지) |
+| **학술/교육 사용** | ✅ 허용 (비영리 프로젝트 해당) |
+| **출처 표기** | 필수 — "식품의약품안전처 공공데이터 이용, 공공누리 제4유형" |
+| **상업적 이용** | ❌ 불가 — 상용화 시 별도 라이선스 필요 |
+| **2차 가공/변경** | ❌ 불가 — 원본 그대로 사용, 데이터 수정 배포 금지 |
+| **재배포** | ❌ 불가 — JSON 원본을 외부 공개 불가 |
+
+**의료 AI 특수 리스크:**
+- LLM 학습 데이터로의 직접 파인튜닝은 "변경"에 해당할 수 있음 → RAG(검색 참조) 방식은 원본 참조이므로 적합
+- 진단/치료 추천 시 의료기기 인허가(MFDS) 별도 필요 — 본 프로젝트는 일반 건강정보 안내 범위
+- 면책 조항(DISCLAIMER) 고정 출력으로 법적 리스크 최소화 중
+
+**준수 사항:**
+```
+본 서비스는 식품의약품안전처의 공공데이터(e약은요, 의약품 허가정보)를 이용합니다.
+공공누리 제4유형(출처표시-상업적이용금지-변경금지)에 따라 이용합니다.
+```
+
+### 2. 환각 리스크 — ✅ 평가 완료 + 품질 개선
+* [x] 평가 질문 20개 벤치마크 실행 → RAG 정확도 70% (14/20)
+* 주요 패턴: 미등록 약품 miss, 모호한 질문 오매칭, 범위 밖 고점수
+* LLM Step 4 가드레일로 2차 필터링 대응
+* **03/05 개선**: 하이브리드 검색 도입 → 약품명 매칭 정확도 대폭 향상
+* E2E 스트레스 테스트 12건: 성공 9, 정상 차단 3, 실패 0
+
+### 3. 응답 지연 — ✅ 해결 (5초 목표 달성)
+* [x] RAG 검색 avg 23ms
+* [x] GPT-4o-mini 기본 전환 → 전체 평균 4.0초 (5초 목표 달성)
+* 서버 startup 워밍업으로 콜드스타트 제거
+
+---
+
+## 📁 주요 파일 경로 정리
+
+| 파일 | 역할 |
+|------|------|
+| `app/prompts/system_prompt.py` | System Prompt 템플릿, DISCLAIMER, SAFE_FALLBACK_ANSWER |
+| `app/dtos/chat.py` | 요청/응답 DTO (ChatRequest, ChatResponse, ChatErrorResponse) |
+| `app/services/llm_guide.py` | RAG + LLM 서비스 (GLM-5 + GPT-4o-mini), TTS 세그먼트 |
+| `app/services/rag_search.py` | FAISS 검색 서비스 (싱글톤, 인덱스 로드/쿼리) |
+| `app/apis/v1/chat_routers.py` | POST `/api/v1/chat` 엔드포인트 (FAISS 실연동) |
+| `app/apis/v1/__init__.py` | v1 라우터 등록 (chat_router 포함) |
+| `app/core/config.py` | 전체 환경 설정 (DB, JWT, 식약처, OpenAI, GLM-5) |
+| `.env` | API 키 관리 (OCR, 식약처, OpenAI, GLM-5) |
+| `scripts/fetch_drug_info.py` | 식약처 e약은요 API 파싱 스크립트 |
+| `scripts/build_faiss_index.py` | FAISS 인덱스 빌드 스크립트 |
+| `scripts/benchmark_chat.py` | 벤치마크 + 평가 질문 20개 스크립트 |
+| `data/knowledge_base.json` | 의약품 지식 JSON (4,998건) |
+| `data/faiss_index.bin` | FAISS 인덱스 (4,839 벡터, 384차원) |
+| `data/faiss_meta.json` | FAISS 메타데이터 + 청크 텍스트 |
+| `data/benchmark_results.json` | 벤치마크 결과 |
+| `app/tests/chat_apis/test_chat_api.py` | Chat API 테스트 |

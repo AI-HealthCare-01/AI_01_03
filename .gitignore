@@ -1,16 +1,58 @@
-﻿*/__pycache__/
+*/__pycache__/
 *.py[oc]
 build/
 dist/
 wheels/
-*.egg-info
-.venv
+*.egg-info/
+.venv/
 .*.env
 .env
 .idea/
-.vscode
+.vscode/
 .coverage
 *.coverage
 .coverage.*
-요약(기술문서등)/.claude/
-envs
+요약(기술문서등)/
+.claude/
+envs/
+
+# macOS / IDE
+.DS_Store
+.pytest_cache/
+.mypy_cache/
+
+# Model / dataset files
+*.pt
+*.pth
+*.onnx
+*.zip
+*.vsix
+tmp_uploads/
+bus.jpg
+dataset/
+tmp/
+cls_data/
+cls_dataset/
+cls_dataset_itemseq/
+
+# vision assets / datasets
+ai_worker/vision/assets/
+
+# Generated data (large files — .gz 압축본으로 git 관리)
+data/knowledge_base.json
+data/faiss_meta.json
+data/_checkpoint.json
+data/benchmark_results.json
+nul
+
+# Claude Prompts
+claude_prompts/
+
+# BINNA_TASKS.md
+BINNA_TASKS.md
+
+# Sprint 체크리스트
+요약(기술문서등)/06-스프린트/Sprint 02_Checklist.md
+
+# Training artifacts under runs/
+runs/
