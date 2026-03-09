@@ -2,8 +2,8 @@ from fastapi import APIRouter
 
 from app.apis.v1.auth_routers import auth_router
 from app.apis.v1.chat_routers import chat_router
-from app.apis.v1.user_routers import user_router
 from app.apis.v1.tts_routers import tts_router
+from app.apis.v1.user_routers import user_router
 
 from .vision import router as vision_router
 

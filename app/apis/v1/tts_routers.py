@@ -6,6 +6,7 @@ from app.services.tts import generate_tts
 
 tts_router = APIRouter(prefix="/tts", tags=["TTS"])
 
+
 @tts_router.post("/generate", summary="텍스트를 음성으로 변환")
 async def generate_tts_endpoint(request: TTSRequest):
     """
