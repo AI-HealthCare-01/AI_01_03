@@ -52,9 +52,10 @@ def _to_xyxy(det: dict, img_w: int, img_h: int):
 @router.post("/identify")
 async def identify(file: UploadFile):
     try:
+        from PIL import Image
+
         from ai_worker.vision.classifier import get_classifier
         from ai_worker.vision.detector import predict_boxes
-        from PIL import Image
     except ModuleNotFoundError as exc:
         raise HTTPException(status_code=503, detail="Vision dependencies are unavailable") from exc
 
