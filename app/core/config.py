@@ -80,6 +80,7 @@ class Config(BaseSettings):
     VISION_OPENAI_BACKOFF_SEC: float = 0.5
     VISION_OPENAI_MAX_TOKENS: int = 500
     VISION_DETECT_MODEL_PATH: str = "yolov8n.pt"
+    VISION_BYPASS_YOLO: bool = False
     VISION_DETECT_CONF_THRES: float = 0.25
     VISION_MAX_DETECTIONS: int = 5
     VISION_TOP_K: int = 3

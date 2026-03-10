@@ -152,6 +152,9 @@ class VisionService:
         return []
 
     def _detect_bboxes_with_yolo(self, image: Image.Image) -> list[list[int]]:
+        if config.VISION_BYPASS_YOLO:
+            return []
+
         try:
             from ai_worker.vision.detector import predict_boxes
         except Exception as exc:  # pragma: no cover - optional dependency 보호
