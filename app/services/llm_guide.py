@@ -189,6 +189,25 @@ class LLMGuideService:
         prompt = self.build_prompt(context=context, question=question)
         return await self.call_openai(prompt)
 
+    async def generate_answer_general(self, question: str) -> str:
+        """일반 의약품 지식으로 GPT-4o-mini 답변 생성 (컨텍스트 없음)."""
+        prompt = (
+            "AI 의약품 안내 도우미입니다. 일반 의약품 지식으로 카드뉴스처럼 짧고 명확하게 답변하세요.\n\n"
+            "## 출력 형식\n"
+            "**summary**: [약 이름]([주성분])은 [효능]에 사용됩니다.\n"
+            "**dosage**: 성인 1회 O정, 1일 O회, 식후 복용.\n"
+            "**precautions**:\n"
+            "- [금기사항]\n"
+            "- [부작용]\n"
+            "- [병용 주의]\n"
+            "**tips**: [보관법]\n\n"
+            "## 제약 조건\n"
+            "- 전체 400자 이내, 한국어, 존댓말\n"
+            "- 면책 조항 포함 금지\n\n"
+            f"## 질문\n{question}"
+        )
+        return await self.call_openai(prompt)
+
     # ── 컨텍스트 외 질문 감지 (추가 가드레일) ─
     @staticmethod
     def contains_out_of_scope_marker(answer: str) -> bool:
