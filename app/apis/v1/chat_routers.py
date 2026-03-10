@@ -99,9 +99,19 @@ async def chat(request: ChatRequest) -> ORJSONResponse:
                 error = _llm_service.build_safe_response()
                 return ORJSONResponse(content=error, status_code=422)
         else:
-            logger.warning("실시간 조회도 실패 — 안전 응답 반환")
-            error = _llm_service.build_safe_response()
-            return ORJSONResponse(content=error, status_code=422)
+            # live lookup 실패 → 일반 지식 전용 프롬프트로 LLM 재호출
+            logger.warning("실시간 조회 실패 — 일반 지식 모드로 LLM 재호출")
+            try:
+                raw_answer = await _llm_service.generate_answer_general(question)
+            except Exception:
+                logger.exception("LLM 일반 지식 재호출 실패")
+                error = _llm_service.build_safe_response()
+                return ORJSONResponse(content=error, status_code=422)
+            if _llm_service.contains_out_of_scope_marker(raw_answer):
+                logger.warning("일반 지식 모드에서도 out_of_scope — 안전 응답 반환")
+                error = _llm_service.build_safe_response()
+                return ORJSONResponse(content=error, status_code=422)
+            rag_citations = []
 
     # ── Step 5: 응답 조립 ──
     response_data = _llm_service.build_success_response(
