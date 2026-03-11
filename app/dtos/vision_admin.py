@@ -116,4 +116,3 @@ class VisionAdminReviewResultUpsertResponse(BaseSerializerModel):
     retrain_eligible: bool
     retrain_bucket: RetrainBucketValue
     reviewed_at: datetime
-
