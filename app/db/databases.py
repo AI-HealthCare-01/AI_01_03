@@ -9,6 +9,7 @@ TORTOISE_APP_MODELS = [
     "app.models.prescriptions",
     "app.models.schedules",
     "app.models.users",
+    "app.models.vision",
 ]
 
 TORTOISE_ORM = {
