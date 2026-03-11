@@ -18,3 +18,9 @@ async def get_request_user(credential: Annotated[HTTPAuthorizationCredentials, D
     if not user:
         raise HTTPException(detail="Authenticate Failed.", status_code=status.HTTP_401_UNAUTHORIZED)
     return user
+
+
+async def get_admin_user(user: Annotated[User, Depends(get_request_user)]) -> User:
+    if not user.is_admin:
+        raise HTTPException(detail="Admin permission required.", status_code=status.HTTP_403_FORBIDDEN)
+    return user
