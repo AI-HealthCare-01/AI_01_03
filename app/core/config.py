@@ -93,3 +93,5 @@ class Config(BaseSettings):
     VISION_MEDICATION_MAP_PATH: str = "app/resources/vision_medication_map.json"
     VISION_CLASSIFIER_TOP_K: int = 3
     VISION_CLASSIFIER_WEIGHT: float = 0.7
+    VISION_SAMPLE_LOG_ENABLED: bool = True
+    VISION_SAMPLE_ROOT: str = "runs/vision_samples"

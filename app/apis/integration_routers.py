@@ -2,13 +2,14 @@ from __future__ import annotations
 
 import json
 import re
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Annotated
+from uuid import uuid4
 
 from fastapi import APIRouter, Depends, File, Query, Request, UploadFile
 
-from app.core import config
+from app.core import config, default_logger
 from app.dtos.integration import (
     ChatFailureResponse,
     ChatRequest,
@@ -125,6 +126,110 @@ def _to_medication_id(raw_name: str, medication_map: dict[str, str] | None = Non
     return _normalize_medication_id(name)
 
 
+def _build_vision_sample_record(
+    *,
+    sample_id: str,
+    created_at: str,
+    request_endpoint: str,
+    source_type: str,
+    original_image_path: str | None,
+    content_type: str | None,
+    image_size_bytes: int,
+    success: bool,
+    error_code: str | None,
+    predicted_candidates: list[dict[str, object]],
+    detection_boxes: list[list[int]],
+    raw_detections: list[dict[str, object]] | None,
+    model_version_detect: str,
+    model_version_classify: str,
+) -> dict[str, object]:
+    top1_medication_id: str | None = None
+    top1_confidence = 0.0
+    if predicted_candidates:
+        top1 = predicted_candidates[0]
+        top1_medication_id = str(top1.get("medication_id", "")).strip() or None
+        try:
+            top1_confidence = float(top1.get("confidence", 0.0))
+        except Exception:
+            top1_confidence = 0.0
+
+    return {
+        "sample_id": sample_id,
+        "created_at": created_at,
+        "request_endpoint": request_endpoint,
+        "source_type": source_type,
+        "original_image_path": original_image_path,
+        "content_type": content_type,
+        "image_size_bytes": image_size_bytes,
+        "success": success,
+        "error_code": error_code,
+        "predicted_candidates": predicted_candidates,
+        "top1_medication_id": top1_medication_id,
+        "top1_confidence": round(top1_confidence, 4),
+        "detection_boxes": detection_boxes,
+        "raw_detections": raw_detections or [],
+        "model_version_detect": model_version_detect,
+        "model_version_classify": model_version_classify,
+    }
+
+
+def _persist_vision_sample(
+    *,
+    image_bytes: bytes | None,
+    content_type: str | None,
+    request_endpoint: str,
+    success: bool,
+    error_code: str | None,
+    predicted_candidates: list[dict[str, object]],
+    detection_boxes: list[list[int]],
+    raw_detections: list[dict[str, object]] | None,
+    model_version_detect: str,
+    model_version_classify: str,
+) -> None:
+    if not config.VISION_SAMPLE_LOG_ENABLED:
+        return
+
+    try:
+        sample_id = uuid4().hex
+        created_at = datetime.now(timezone.utc).isoformat()
+        root = Path(config.VISION_SAMPLE_ROOT).expanduser()
+        images_dir = root / "images"
+        images_dir.mkdir(parents=True, exist_ok=True)
+
+        ext = {
+            "image/jpeg": ".jpg",
+            "image/jpg": ".jpg",
+            "image/png": ".png",
+            "image/webp": ".webp",
+        }.get((content_type or "").lower(), ".bin")
+        image_path = images_dir / f"{sample_id}{ext}"
+        if image_bytes:
+            image_path.write_bytes(image_bytes)
+
+        record = _build_vision_sample_record(
+            sample_id=sample_id,
+            created_at=created_at,
+            request_endpoint=request_endpoint,
+            source_type="user_upload",
+            original_image_path=str(image_path),
+            content_type=content_type,
+            image_size_bytes=len(image_bytes or b""),
+            success=success,
+            error_code=error_code,
+            predicted_candidates=predicted_candidates,
+            detection_boxes=detection_boxes,
+            raw_detections=raw_detections,
+            model_version_detect=model_version_detect,
+            model_version_classify=model_version_classify,
+        )
+
+        records_path = root / "records.jsonl"
+        with records_path.open("a", encoding="utf-8") as fp:
+            fp.write(json.dumps(record, ensure_ascii=False) + "\n")
+    except Exception as exc:
+        default_logger.warning("[VisionSample] failed to persist sample: %s", exc)
+
+
 @integration_router.post("/vision/identify", response_model=VisionIdentifyResponse)
 async def vision_identify(
     request: Request,
@@ -155,18 +260,55 @@ async def vision_identify(
         )
 
     image_bytes = await image.read()
+    request_endpoint = "/api/vision/identify"
     try:
         vision_result = await vision_service.identify(
             image_bytes=image_bytes,
             content_type=image.content_type,
         )
     except VisionServiceError as exc:
+        if exc.error_code == "NO_PILL_DETECTED":
+            _persist_vision_sample(
+                image_bytes=image_bytes,
+                content_type=image.content_type,
+                request_endpoint=request_endpoint,
+                success=False,
+                error_code=exc.error_code,
+                predicted_candidates=[],
+                detection_boxes=[],
+                raw_detections=None,
+                model_version_detect=config.VISION_DETECT_MODEL_PATH,
+                model_version_classify=config.VISION_CLASSIFIER_MODEL_PATH,
+            )
         return VisionIdentifyResponse(success=False, candidates=[], error_code=exc.error_code)
     except Exception:
+        _persist_vision_sample(
+            image_bytes=image_bytes,
+            content_type=image.content_type,
+            request_endpoint=request_endpoint,
+            success=False,
+            error_code="VISION_INTERNAL_ERROR",
+            predicted_candidates=[],
+            detection_boxes=[],
+            raw_detections=None,
+            model_version_detect=config.VISION_DETECT_MODEL_PATH,
+            model_version_classify=config.VISION_CLASSIFIER_MODEL_PATH,
+        )
         return VisionIdentifyResponse(success=False, candidates=[], error_code="VISION_INTERNAL_ERROR")
 
     merged_confidence: dict[str, float] = {}
     medication_map = _load_vision_medication_map()
+    detection_boxes = [detection.bbox for detection in vision_result.detections]
+    raw_detections = [
+        {
+            "bbox": detection.bbox,
+            "candidates": [
+                {"drug_name": candidate.drug_name, "confidence": candidate.confidence}
+                for candidate in detection.candidates
+            ],
+        }
+        for detection in vision_result.detections
+    ]
     for detection in vision_result.detections:
         for candidate in detection.candidates:
             medication_id = _to_medication_id(candidate.drug_name, medication_map)
@@ -176,10 +318,34 @@ async def vision_identify(
 
     sorted_candidates = sorted(merged_confidence.items(), key=lambda item: item[1], reverse=True)
     if not sorted_candidates:
+        _persist_vision_sample(
+            image_bytes=image_bytes,
+            content_type=image.content_type,
+            request_endpoint=request_endpoint,
+            success=False,
+            error_code="LOW_CONFIDENCE",
+            predicted_candidates=[],
+            detection_boxes=detection_boxes,
+            raw_detections=raw_detections,
+            model_version_detect=config.VISION_DETECT_MODEL_PATH,
+            model_version_classify=config.VISION_CLASSIFIER_MODEL_PATH,
+        )
         return VisionIdentifyResponse(success=False, candidates=[], error_code="LOW_CONFIDENCE")
 
     top_confidence = sorted_candidates[0][1]
     if top_confidence < 0.8:
+        _persist_vision_sample(
+            image_bytes=image_bytes,
+            content_type=image.content_type,
+            request_endpoint=request_endpoint,
+            success=False,
+            error_code="LOW_CONFIDENCE",
+            predicted_candidates=[],
+            detection_boxes=detection_boxes,
+            raw_detections=raw_detections,
+            model_version_detect=config.VISION_DETECT_MODEL_PATH,
+            model_version_classify=config.VISION_CLASSIFIER_MODEL_PATH,
+        )
         return VisionIdentifyResponse(success=False, candidates=[], error_code="LOW_CONFIDENCE")
 
     top_k = max(1, config.VISION_TOP_K)
@@ -187,6 +353,22 @@ async def vision_identify(
         VisionCandidate(medication_id=medication_id, confidence=confidence)
         for medication_id, confidence in sorted_candidates[:top_k]
     ]
+    persisted_candidates = [
+        {"medication_id": candidate.medication_id, "confidence": candidate.confidence}
+        for candidate in candidates
+    ]
+    _persist_vision_sample(
+        image_bytes=image_bytes,
+        content_type=image.content_type,
+        request_endpoint=request_endpoint,
+        success=True,
+        error_code=None,
+        predicted_candidates=persisted_candidates,
+        detection_boxes=detection_boxes,
+        raw_detections=raw_detections,
+        model_version_detect=config.VISION_DETECT_MODEL_PATH,
+        model_version_classify=config.VISION_CLASSIFIER_MODEL_PATH,
+    )
     return VisionIdentifyResponse(success=True, candidates=candidates, error_code=None)
 
 
