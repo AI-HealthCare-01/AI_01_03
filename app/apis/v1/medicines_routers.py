@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 import re
 from typing import Annotated
 
@@ -7,6 +8,8 @@ from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from pydantic import BaseModel
 
 from app.services.ocr import OCRService
+from app.services.tts import generate_tts
+from app.services.vision import VisionService, VisionServiceError
 
 medicines_router = APIRouter(prefix="/medicines", tags=["Medicines"])
 
@@ -78,3 +81,62 @@ async def ocr_prescription(
         )
 
     return PrescriptionOcrResponse(items=items)
+
+
+# ── TTS ──────────────────────────────────────────────────────────────────────
+
+class MedicineTTSRequest(BaseModel):
+    guide_id: str = ""
+    text: str = ""
+    lang: str = "ko"
+
+
+class MedicineTTSResponse(BaseModel):
+    audio_url: str
+
+
+@medicines_router.post("/tts", response_model=MedicineTTSResponse)
+async def medicines_tts(request: MedicineTTSRequest) -> MedicineTTSResponse:
+    if not request.text.strip():
+        raise HTTPException(status_code=400, detail="text is required")
+
+    try:
+        audio_fp = await generate_tts(text=request.text, lang=request.lang)
+        audio_bytes = audio_fp.read()
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail="TTS 생성 실패") from exc
+
+    b64 = base64.b64encode(audio_bytes).decode("utf-8")
+    return MedicineTTSResponse(audio_url=f"data:audio/mpeg;base64,{b64}")
+
+
+# ── 알약 인식 ──────────────────────────────────────────────────────────────────
+
+class MedicineRecognizeResponse(BaseModel):
+    medicine_name: str
+
+
+@medicines_router.post("/recognize", response_model=MedicineRecognizeResponse)
+async def recognize_pill(
+    vision_service: Annotated[VisionService, Depends(VisionService)],
+    image: UploadFile = File(...),
+) -> MedicineRecognizeResponse:
+    image_bytes = await image.read()
+
+    try:
+        result = await vision_service.identify(
+            image_bytes=image_bytes,
+            content_type=image.content_type,
+        )
+    except VisionServiceError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.message) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail="알약 인식 실패") from exc
+
+    medicine_name = "식별불가"
+    for detection in result.detections:
+        if detection.candidates:
+            medicine_name = detection.candidates[0].drug_name
+            break
+
+    return MedicineRecognizeResponse(medicine_name=medicine_name)
