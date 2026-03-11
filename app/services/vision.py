@@ -4,6 +4,8 @@ import asyncio
 import base64
 import io
 import json
+import subprocess
+import sys
 import tempfile
 import time
 from pathlib import Path
@@ -103,7 +105,15 @@ class VisionService:
         detections: list[VisionDetection] = []
         for bbox in boxes[: max(1, config.VISION_MAX_DETECTIONS)]:
             x, y, w, h = bbox
-            crop = resized.crop((x, y, x + w, y + h))
+            pad_x = max(1, int(round(w * 0.10)))
+            pad_y = max(1, int(round(h * 0.10)))
+            x1 = max(0, x - pad_x)
+            y1 = max(0, y - pad_y)
+            x2 = min(resized.width, x + w + pad_x)
+            y2 = min(resized.height, y + h + pad_y)
+            if x2 <= x1 or y2 <= y1:
+                x1, y1, x2, y2 = x, y, x + w, y + h
+            crop = resized.crop((x1, y1, x2, y2))
             candidates = await self._identify_candidates(crop)
             detections.append(VisionDetection(bbox=[x, y, w, h], candidates=candidates))
 
@@ -152,24 +162,76 @@ class VisionService:
         return []
 
     def _detect_bboxes_with_yolo(self, image: Image.Image) -> list[list[int]]:
-        try:
-            from ai_worker.vision.detector import predict_boxes
-        except Exception as exc:  # pragma: no cover - optional dependency 보호
-            default_logger.warning("[Vision] YOLO import failed: %s", exc)
+        if config.VISION_BYPASS_YOLO:
             return []
 
+        raw_boxes: list[dict[str, Any]] = []
         try:
             with tempfile.NamedTemporaryFile(suffix=".jpg") as tmp:
                 image.save(tmp, format="JPEG", quality=90)
                 tmp.flush()
-                raw_boxes = predict_boxes(
-                    image_path=tmp.name,
-                    conf_thres=config.VISION_DETECT_CONF_THRES,
-                    model_path=config.VISION_DETECT_MODEL_PATH,
+
+                child_code = (
+                    "import json,sys\n"
+                    "from ai_worker.vision.detector import predict_boxes\n"
+                    "image_path=sys.argv[1]\n"
+                    "conf=float(sys.argv[2])\n"
+                    "model_path=sys.argv[3]\n"
+                    "try:\n"
+                    "    boxes=predict_boxes(image_path=image_path, conf_thres=conf, model_path=model_path)\n"
+                    "    print(json.dumps({'ok': True, 'boxes': boxes}, ensure_ascii=False))\n"
+                    "except Exception as exc:\n"
+                    "    print(json.dumps({'ok': False, 'error': f'{type(exc).__name__}: {exc}'}, ensure_ascii=False))\n"
                 )
+
+                completed = subprocess.run(
+                    [
+                        sys.executable,
+                        "-c",
+                        child_code,
+                        tmp.name,
+                        str(config.VISION_DETECT_CONF_THRES),
+                        str(config.VISION_DETECT_MODEL_PATH),
+                    ],
+                    capture_output=True,
+                    text=True,
+                    timeout=15,
+                )
+        except subprocess.TimeoutExpired:
+            default_logger.warning("[Vision] YOLO prediction timed out")
+            return []
         except Exception as exc:
             default_logger.warning("[Vision] YOLO prediction failed: %s", exc)
             return []
+
+        if completed.returncode != 0:
+            default_logger.warning(
+                "[Vision] YOLO subprocess failed (returncode=%s): %s",
+                completed.returncode,
+                (completed.stderr or "").strip()[-400:],
+            )
+            return []
+
+        stdout = (completed.stdout or "").strip()
+        if not stdout:
+            default_logger.warning("[Vision] YOLO subprocess returned empty stdout")
+            return []
+
+        try:
+            payload = json.loads(stdout.splitlines()[-1])
+        except Exception:
+            default_logger.warning("[Vision] YOLO subprocess output parse failed: %s", stdout[-400:])
+            return []
+
+        if not isinstance(payload, dict):
+            return []
+        if payload.get("ok") is not True:
+            default_logger.warning("[Vision] YOLO subprocess error: %s", payload.get("error"))
+            return []
+
+        parsed_boxes = payload.get("boxes")
+        if isinstance(parsed_boxes, list):
+            raw_boxes = parsed_boxes
 
         normalized: list[tuple[float, list[int]]] = []
         for raw in raw_boxes:
@@ -374,18 +436,77 @@ class VisionService:
             default_logger.warning("[Vision] classifier model not found: %s", model_path)
             return []
 
+        cls_outputs: list[dict[str, Any]] = []
         try:
-            from ai_worker.vision.classifier import predict_classes
+            with tempfile.NamedTemporaryFile(suffix=".png") as tmp:
+                crop.save(tmp, format="PNG")
+                tmp.flush()
 
-            cls_outputs = predict_classes(
-                image=crop,
-                model_path=str(model_path),
-                labels_path=config.VISION_CLASSIFIER_LABELS_PATH,
-                top_k=max(1, config.VISION_CLASSIFIER_TOP_K),
-            )
+                child_code = (
+                    "import json,sys\n"
+                    "from PIL import Image\n"
+                    "from ai_worker.vision.classifier import predict_classes\n"
+                    "image_path=sys.argv[1]\n"
+                    "model_path=sys.argv[2]\n"
+                    "labels_path=sys.argv[3]\n"
+                    "top_k=int(sys.argv[4])\n"
+                    "try:\n"
+                    "    image=Image.open(image_path).convert('RGB')\n"
+                    "    outputs=predict_classes(image=image, model_path=model_path, labels_path=labels_path, top_k=top_k)\n"
+                    "    print(json.dumps({'ok': True, 'outputs': outputs}, ensure_ascii=False))\n"
+                    "except Exception as exc:\n"
+                    "    print(json.dumps({'ok': False, 'error': f'{type(exc).__name__}: {exc}'}, ensure_ascii=False))\n"
+                )
+
+                completed = subprocess.run(
+                    [
+                        sys.executable,
+                        "-c",
+                        child_code,
+                        tmp.name,
+                        str(model_path),
+                        str(config.VISION_CLASSIFIER_LABELS_PATH or ""),
+                        str(max(1, config.VISION_CLASSIFIER_TOP_K)),
+                    ],
+                    capture_output=True,
+                    text=True,
+                    timeout=15,
+                )
+        except subprocess.TimeoutExpired:
+            default_logger.warning("[Vision] classifier prediction timed out")
+            return []
         except Exception as exc:
             default_logger.warning("[Vision] classifier prediction failed: %s", exc)
             return []
+
+        if completed.returncode != 0:
+            default_logger.warning(
+                "[Vision] classifier subprocess failed (returncode=%s): %s",
+                completed.returncode,
+                (completed.stderr or "").strip()[-400:],
+            )
+            return []
+
+        stdout = (completed.stdout or "").strip()
+        if not stdout:
+            default_logger.warning("[Vision] classifier subprocess returned empty stdout")
+            return []
+
+        try:
+            payload = json.loads(stdout.splitlines()[-1])
+        except Exception:
+            default_logger.warning("[Vision] classifier subprocess output parse failed: %s", stdout[-400:])
+            return []
+
+        if not isinstance(payload, dict):
+            return []
+        if payload.get("ok") is not True:
+            default_logger.warning("[Vision] classifier subprocess error: %s", payload.get("error"))
+            return []
+
+        parsed_outputs = payload.get("outputs")
+        if isinstance(parsed_outputs, list):
+            cls_outputs = parsed_outputs
 
         candidates: list[VisionCandidate] = []
         for output in cls_outputs:
