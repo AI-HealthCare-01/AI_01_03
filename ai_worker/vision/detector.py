@@ -15,7 +15,7 @@ def get_detector(model_path: str = "yolov8n.pt"):
 
 def predict_boxes(image_path: str, conf_thres: float = 0.5, model_path: str = "yolov8n.pt"):
     model = get_detector(model_path)
-    results = model(image_path)
+    results = model(image_path, conf=float(conf_thres))
     r0 = results[0]
     boxes = r0.boxes
 
