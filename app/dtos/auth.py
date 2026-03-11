@@ -29,3 +29,9 @@ class LoginResponse(BaseModel):
 
 
 class TokenRefreshResponse(LoginResponse): ...
+
+class OAuthUrlResponse(BaseModel):
+    url: str
+
+class OAuthCallbackRequest(BaseModel):
+    code: str
