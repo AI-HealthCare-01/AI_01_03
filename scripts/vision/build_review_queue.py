@@ -106,7 +106,9 @@ def _evaluate_record(record: dict[str, Any]) -> dict[str, Any]:
     if not deduped_reasons:
         priority = "P4"
     else:
-        priority = min((REASON_TO_PRIORITY.get(reason, "P4") for reason in deduped_reasons), key=lambda p: PRIORITY_ORDER[p])
+        priority = min(
+            (REASON_TO_PRIORITY.get(reason, "P4") for reason in deduped_reasons), key=lambda p: PRIORITY_ORDER[p]
+        )
 
     return {
         "sample_id": sample_id,
@@ -190,7 +192,9 @@ def main() -> int:
         counts[p] = counts.get(p, 0) + 1
 
     print(f"[OK] wrote review queue: {args.output}")
-    print(f"[OK] total={len(records)} P0={counts.get('P0',0)} P1={counts.get('P1',0)} P2={counts.get('P2',0)} P3={counts.get('P3',0)} P4={counts.get('P4',0)}")
+    print(
+        f"[OK] total={len(records)} P0={counts.get('P0', 0)} P1={counts.get('P1', 0)} P2={counts.get('P2', 0)} P3={counts.get('P3', 0)} P4={counts.get('P4', 0)}"
+    )
     return 0
 
 

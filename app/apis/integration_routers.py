@@ -354,8 +354,7 @@ async def vision_identify(
         for medication_id, confidence in sorted_candidates[:top_k]
     ]
     persisted_candidates = [
-        {"medication_id": candidate.medication_id, "confidence": candidate.confidence}
-        for candidate in candidates
+        {"medication_id": candidate.medication_id, "confidence": candidate.confidence} for candidate in candidates
     ]
     _persist_vision_sample(
         image_bytes=image_bytes,
