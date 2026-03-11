@@ -2,6 +2,7 @@ from fastapi import APIRouter
 
 from app.apis.v1.auth_routers import auth_router
 from app.apis.v1.chat_routers import chat_router
+from app.apis.v1.medicines_routers import medicines_router
 from app.apis.v1.tts_routers import tts_router
 from app.apis.v1.user_routers import user_router
 
@@ -13,3 +14,4 @@ v1_routers.include_router(user_router)
 v1_routers.include_router(vision_router)
 v1_routers.include_router(chat_router)
 v1_routers.include_router(tts_router)
+v1_routers.include_router(medicines_router)
