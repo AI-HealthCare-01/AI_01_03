@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 import re
 import time
 import uuid
@@ -34,6 +35,36 @@ class OCRService:
         headers = {"X-OCR-SECRET": config.OCR_SECRET_KEY}
 
         async with httpx.AsyncClient(timeout=20.0) as client:
+            response = await client.post(config.OCR_INVOKE_URL, json=payload, headers=headers)
+            response.raise_for_status()
+            body = response.json()
+
+        return self._collect_infer_text(body)
+
+    async def extract_text_from_image_bytes(self, image_bytes: bytes, image_format: str = "jpg") -> str:
+        if not config.OCR_INVOKE_URL or not config.OCR_SECRET_KEY:
+            raise ValueError("OCR configuration is missing")
+
+        fmt = image_format.lower()
+        if fmt == "jpeg":
+            fmt = "jpg"
+
+        data = base64.b64encode(image_bytes).decode("utf-8")
+        payload = {
+            "version": "V2",
+            "requestId": str(uuid.uuid4()),
+            "timestamp": int(time.time() * 1000),
+            "images": [
+                {
+                    "format": fmt,
+                    "name": "prescription",
+                    "data": data,
+                }
+            ],
+        }
+        headers = {"X-OCR-SECRET": config.OCR_SECRET_KEY}
+
+        async with httpx.AsyncClient(timeout=30.0) as client:
             response = await client.post(config.OCR_INVOKE_URL, json=payload, headers=headers)
             response.raise_for_status()
             body = response.json()
