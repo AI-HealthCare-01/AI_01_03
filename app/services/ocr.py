@@ -11,8 +11,18 @@ import httpx
 from app.core import config
 from app.dtos.integration import OCRMedication
 
-_DOSE_REGEX = re.compile(r"(\d+\s*일\s*\d+\s*회\s*,\s*\d+\s*일분)")
-_NAME_CLEANUP_REGEX = re.compile(r"[\-:()]+")
+# 형식 1 (조제약 복약안내): 1정씩3회3일분, 1캡슐씩3회3일분
+# 형식 2 (기존): 3일 2회, 3일분
+_DOSE_REGEX = re.compile(
+    r"(\d+[가-힣]*\s*씩\s*\d+\s*회\s*\d+\s*일분"
+    r"|\d+\s*일\s*\d+\s*회\s*,\s*\d+\s*일분)"
+)
+_NAME_CLEANUP_REGEX = re.compile(r"[\-:()\[\]]+")
+# 약품명 줄 판별: 정/캡슐/알서/액/시럽 등으로 끝나거나 숫자%/mg 포함
+_DRUG_NAME_PATTERN = re.compile(
+    r"(정|캡슐|알서|시럽|액|연고|크림|산|환|주사|패치|좌제|점안액|흡입제|액제|\d+mg|\d+%|\d+mL)$",
+    re.IGNORECASE,
+)
 
 
 class OCRService:
@@ -75,23 +85,31 @@ class OCRService:
         lines = [line.strip() for line in text.splitlines() if line.strip()]
         medications: list[OCRMedication] = []
 
-        previous_line = ""
-        for line in lines:
+        for i, line in enumerate(lines):
             dose_match = _DOSE_REGEX.search(line)
             if not dose_match:
-                previous_line = line
                 continue
 
             dose_text = self._normalize_spaces(dose_match.group(1))
+
+            # 같은 줄에서 약품명 추출 시도
             name_candidate = line.replace(dose_match.group(1), "").strip(" ,")
+
+            # 없으면 이전 줄들에서 약품명 패턴 검색 (최대 5줄 이전)
             if not name_candidate:
-                name_candidate = previous_line
+                for j in range(i - 1, max(i - 6, -1), -1):
+                    if _DRUG_NAME_PATTERN.search(lines[j]):
+                        name_candidate = lines[j]
+                        break
+                # 패턴 미발견 시 바로 이전 줄 사용
+                if not name_candidate and i > 0:
+                    name_candidate = lines[i - 1]
+
             name = self._normalize_name(name_candidate)
             if not name:
                 name = "확인필요"
 
             medications.append(OCRMedication(name=name, dose_text=dose_text))
-            previous_line = line
 
         return medications
 

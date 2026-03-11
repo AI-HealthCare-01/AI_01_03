@@ -10,7 +10,10 @@ from app.services.ocr import OCRService
 
 medicines_router = APIRouter(prefix="/medicines", tags=["Medicines"])
 
-_DOSE_PARSE_REGEX = re.compile(r"(\d+)\s*일\s*(\d+)\s*회\s*,\s*(\d+)\s*일분")
+# 형식 1: 1정씩3회3일분 / 1캡슐씩3회3일분
+_DOSE_PARSE_NEW = re.compile(r"(\d+[가-힣]*)\s*씩\s*(\d+)\s*회\s*(\d+)\s*일분")
+# 형식 2: 3일 2회, 3일분
+_DOSE_PARSE_OLD = re.compile(r"(\d+)\s*일\s*(\d+)\s*회\s*,\s*(\d+)\s*일분")
 
 
 class PrescriptionOcrItem(BaseModel):
@@ -27,11 +30,19 @@ class PrescriptionOcrResponse(BaseModel):
 
 def _parse_dose_text(dose_text: str) -> tuple[str, str, str, str]:
     """dose_text 파싱 → (dosage, frequency, duration, schedule)"""
-    m = _DOSE_PARSE_REGEX.search(dose_text)
+    # 형식 1: 1정씩3회3일분
+    m = _DOSE_PARSE_NEW.search(dose_text)
+    if m:
+        dosage = m.group(1)   # "1정" or "1캡슐"
+        freq = m.group(2)     # "3"
+        duration = m.group(3) # "3"
+        return dosage, f"하루 {freq}회", f"{duration}일", "식후"
+    # 형식 2: 3일 2회, 3일분
+    m = _DOSE_PARSE_OLD.search(dose_text)
     if m:
         freq = m.group(2)
-        duration_days = m.group(3)
-        return "1정", f"하루 {freq}회", f"{duration_days}일", "식후"
+        duration = m.group(3)
+        return "1정", f"하루 {freq}회", f"{duration}일", "식후"
     return "1정", dose_text, "", "식후"
 
 
