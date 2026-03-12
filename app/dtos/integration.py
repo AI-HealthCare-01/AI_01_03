@@ -34,6 +34,17 @@ class VisionIdentifyResponse(ContractBaseResponse):
     candidates: list[VisionCandidate]
 
 
+class VisionDetailRequest(BaseModel):
+    medication_id: str = Field(pattern=MEDICATION_ID_PATTERN)
+    drug_name_hint: str | None = None
+
+
+class VisionDetailResponse(ContractBaseResponse):
+    medication_id: str = Field(pattern=MEDICATION_ID_PATTERN)
+    drug_name: str | None = None
+    context_text: str | None = None
+
+
 class OCRParseRequest(BaseModel):
     text: str | None = None
     image_url: str | None = None

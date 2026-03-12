@@ -24,10 +24,13 @@ from app.dtos.integration import (
     OCRParseRequest,
     OCRParseResponse,
     VisionCandidate,
+    VisionDetailRequest,
+    VisionDetailResponse,
     VisionIdentifyRequest,
     VisionIdentifyResponse,
 )
 from app.models.schedules import MedicationSchedule
+from app.services.live_drug_lookup import lookup_drug_async
 from app.services.ocr import OCRService
 from app.services.prescription_flow import PrescriptionFlowService
 from app.services.vision import VisionService, VisionServiceError
@@ -124,6 +127,42 @@ def _to_medication_id(raw_name: str, medication_map: dict[str, str] | None = Non
             return medication_id
 
     return _normalize_medication_id(name)
+
+
+def _best_effort_drug_query(*, medication_id: str, drug_name_hint: str | None = None) -> str:
+    hint = (drug_name_hint or "").strip()
+    if hint:
+        return hint
+
+    normalized_medication_id = _normalize_medication_id(medication_id)
+    if not normalized_medication_id:
+        return ""
+
+    # alias reverse lookup (ex: TYLENOL_500 -> 타이레놀)
+    for alias_name, alias_medication_id in _medication_aliases.items():
+        if _normalize_medication_id(alias_medication_id) == normalized_medication_id:
+            return alias_name
+
+    # vision medication map reverse lookup (target medication_id -> source label)
+    path = (config.VISION_MEDICATION_MAP_PATH or "").strip()
+    if path:
+        try:
+            payload = json.loads(Path(path).read_text(encoding="utf-8"))
+            if isinstance(payload, dict):
+                for source_label, target_medication_id in payload.items():
+                    if not isinstance(source_label, str) or not isinstance(target_medication_id, str):
+                        continue
+                    if _normalize_medication_id(target_medication_id) == normalized_medication_id:
+                        source = source_label.strip()
+                        if source:
+                            return source
+        except Exception:
+            pass
+
+    # fallback: keep class-like token readable for search
+    if normalized_medication_id.startswith("K_"):
+        return normalized_medication_id.replace("_", "-", 1)
+    return normalized_medication_id.replace("_", " ")
 
 
 def _build_vision_sample_record(
@@ -369,6 +408,49 @@ async def vision_identify(
         model_version_classify=config.VISION_CLASSIFIER_MODEL_PATH,
     )
     return VisionIdentifyResponse(success=True, candidates=candidates, error_code=None)
+
+
+@integration_router.post("/vision/detail", response_model=VisionDetailResponse)
+async def vision_detail(request: VisionDetailRequest) -> VisionDetailResponse:
+    medication_id = request.medication_id
+    query = _best_effort_drug_query(medication_id=medication_id, drug_name_hint=request.drug_name_hint)
+    if not query:
+        return VisionDetailResponse(
+            success=False,
+            error_code="DRUG_QUERY_REQUIRED",
+            medication_id=medication_id,
+            drug_name=None,
+            context_text=None,
+        )
+
+    try:
+        result = await lookup_drug_async(query)
+    except Exception:
+        return VisionDetailResponse(
+            success=False,
+            error_code="VISION_DETAIL_LOOKUP_FAILED",
+            medication_id=medication_id,
+            drug_name=None,
+            context_text=None,
+        )
+
+    if not result:
+        return VisionDetailResponse(
+            success=False,
+            error_code="DRUG_INFO_NOT_FOUND",
+            medication_id=medication_id,
+            drug_name=None,
+            context_text=None,
+        )
+
+    context_text, drug_name = result
+    return VisionDetailResponse(
+        success=True,
+        error_code=None,
+        medication_id=medication_id,
+        drug_name=drug_name,
+        context_text=context_text,
+    )
 
 
 @integration_router.post("/ocr/parse", response_model=OCRParseResponse)
