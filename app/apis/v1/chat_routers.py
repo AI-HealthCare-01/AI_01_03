@@ -57,9 +57,9 @@ async def chat(request: ChatRequest) -> ORJSONResponse:
             rag_citations = [{"source": "식약처 실시간 조회", "title": live_name}]
             logger.info("실시간 조회 성공: %s", live_name)
         else:
-            logger.warning("실시간 조회도 실패 — 안전 응답 반환")
-            error = _llm_service.build_safe_response()
-            return ORJSONResponse(content=error, status_code=422)
+            logger.warning("실시간 조회도 실패 — GPT 직접 답변 시도")
+            rag_context = ""
+            rag_citations = []
 
     # ── Step 3: LLM 답변 생성 ──
     try:
@@ -95,13 +95,17 @@ async def chat(request: ChatRequest) -> ORJSONResponse:
                 )
             rag_citations = [{"source": "식약처 실시간 조회", "title": live_name}]
             if _llm_service.contains_out_of_scope_marker(raw_answer):
-                logger.warning("실시간 조회 후에도 LLM out_of_scope — 안전 응답 반환")
-                error = _llm_service.build_safe_response()
-                return ORJSONResponse(content=error, status_code=422)
+                logger.warning("실시간 조회 후에도 LLM out_of_scope — GPT 직접 답변 시도")
+                rag_context = ""
+                rag_citations = []
+                try:
+                    raw_answer = await _llm_service.generate_answer(context="", question=question)
+                except Exception:
+                    pass
         else:
-            logger.warning("실시간 조회도 실패 — 안전 응답 반환")
-            error = _llm_service.build_safe_response()
-            return ORJSONResponse(content=error, status_code=422)
+            logger.warning("실시간 조회도 실패 — GPT 직접 답변 시도")
+            rag_context = ""
+            rag_citations = []
 
     # ── Step 5: 응답 조립 ──
     response_data = _llm_service.build_success_response(
