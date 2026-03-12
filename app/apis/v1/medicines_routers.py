@@ -7,6 +7,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from pydantic import BaseModel
 
+from app.core import config
 from app.services.ocr import OCRService
 from app.services.tts import generate_tts
 from app.services.vision import VisionService, VisionServiceError
@@ -49,6 +50,55 @@ def _parse_dose_text(dose_text: str) -> tuple[str, str, str, str]:
     return "1정", dose_text, "", "식후"
 
 
+async def _parse_with_gpt(text: str) -> list[PrescriptionOcrItem]:
+    """GPT-4o-mini로 OCR 텍스트에서 약품 정보 추출 (regex 실패 시 fallback)."""
+    if not config.OPENAI_API_KEY:
+        return []
+    try:
+        import json as _json
+        from openai import AsyncOpenAI
+        client = AsyncOpenAI(api_key=config.OPENAI_API_KEY)
+        completion = await client.chat.completions.create(
+            model="gpt-4o-mini",
+            temperature=0,
+            response_format={"type": "json_object"},
+            max_tokens=800,
+            messages=[
+                {
+                    "role": "system",
+                    "content": (
+                        "너는 한국 처방전 OCR 텍스트에서 약품 정보를 추출하는 어시스턴트다. "
+                        "반드시 JSON object만 반환하라. "
+                        "형식: {\"items\": [{\"name\": \"약품명\", \"dosage\": \"1정\", "
+                        "\"frequency\": \"하루 3회\", \"duration\": \"3일\", \"schedule\": \"식후\"}]}"
+                    ),
+                },
+                {
+                    "role": "user",
+                    "content": (
+                        f"다음 처방전 OCR 텍스트에서 약품명, 1회 투약량, 복용 횟수, 복용 기간, 복용 시간을 추출해줘.\n\n{text}"
+                    ),
+                },
+            ],
+        )
+        content = completion.choices[0].message.content or ""
+        parsed = _json.loads(content)
+        raw_items = parsed.get("items", [])
+        return [
+            PrescriptionOcrItem(
+                name=item.get("name", "확인필요"),
+                dosage=item.get("dosage", "1정"),
+                frequency=item.get("frequency", ""),
+                duration=item.get("duration", ""),
+                schedule=item.get("schedule", "식후"),
+            )
+            for item in raw_items
+            if item.get("name")
+        ]
+    except Exception:
+        return []
+
+
 @medicines_router.post("/ocr/prescription", response_model=PrescriptionOcrResponse)
 async def ocr_prescription(
     ocr_service: Annotated[OCRService, Depends(OCRService)],
@@ -65,20 +115,19 @@ async def ocr_prescription(
     except Exception as exc:
         raise HTTPException(status_code=500, detail="OCR processing failed") from exc
 
+    # 1차: regex 파싱
     medications = ocr_service.parse_prescription_text(text)
-
     items = []
     for med in medications:
         dosage, frequency, duration, schedule = _parse_dose_text(med.dose_text)
-        items.append(
-            PrescriptionOcrItem(
-                name=med.name,
-                dosage=dosage,
-                frequency=frequency,
-                duration=duration,
-                schedule=schedule,
-            )
-        )
+        items.append(PrescriptionOcrItem(
+            name=med.name, dosage=dosage,
+            frequency=frequency, duration=duration, schedule=schedule,
+        ))
+
+    # 2차: regex 결과 없으면 GPT fallback
+    if not items:
+        items = await _parse_with_gpt(text)
 
     return PrescriptionOcrResponse(items=items)
 
