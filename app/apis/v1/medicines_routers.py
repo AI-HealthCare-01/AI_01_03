@@ -159,6 +159,59 @@ async def medicines_tts(request: MedicineTTSRequest) -> MedicineTTSResponse:
     return MedicineTTSResponse(audio_url=f"data:audio/mpeg;base64,{b64}")
 
 
+# ── 약품 정보 조회 ─────────────────────────────────────────────────────────────
+
+
+class MedicineInfoRequest(BaseModel):
+    name: str
+
+
+class MedicineInfoResponse(BaseModel):
+    summary: str
+    dosage: str
+    precautions: str
+
+
+@medicines_router.post("/info", response_model=MedicineInfoResponse)
+async def get_medicine_info(request: MedicineInfoRequest) -> MedicineInfoResponse:
+    """GPT-4o-mini로 약품/영양제 정보 조회."""
+    if not config.OPENAI_API_KEY:
+        raise HTTPException(status_code=503, detail="OpenAI API key not configured")
+    try:
+        import json as _json
+        from openai import AsyncOpenAI
+        client = AsyncOpenAI(api_key=config.OPENAI_API_KEY)
+        completion = await client.chat.completions.create(
+            model="gpt-4o-mini",
+            temperature=0,
+            response_format={"type": "json_object"},
+            max_tokens=600,
+            messages=[
+                {
+                    "role": "system",
+                    "content": (
+                        "너는 한국 약품/영양제 정보를 안내하는 어시스턴트다. "
+                        "반드시 JSON object만 반환하라. "
+                        '형식: {"summary": "효능 요약", "dosage": "복용법", "precautions": "주의사항"}'
+                    ),
+                },
+                {
+                    "role": "user",
+                    "content": f"{request.name}의 효능, 복용법, 주의사항을 한국어로 간략히 알려줘.",
+                },
+            ],
+        )
+        content = completion.choices[0].message.content or "{}"
+        data = _json.loads(content)
+        return MedicineInfoResponse(
+            summary=data.get("summary", ""),
+            dosage=data.get("dosage", ""),
+            precautions=data.get("precautions", ""),
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail="약품 정보 조회 실패") from exc
+
+
 # ── 알약 인식 ──────────────────────────────────────────────────────────────────
 
 class MedicineRecognizeResponse(BaseModel):
