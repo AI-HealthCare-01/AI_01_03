@@ -27,7 +27,9 @@ from app.db.databases import TORTOISE_ORM
 from app.models.drug_reference import DrugReference
 
 ROOT = Path(__file__).resolve().parent.parent
-DEFAULT_EXCEL_PATH = ROOT / "경구약제 이미지 데이터(데이터 설명서, 경구약제 리스트)" / "단일 경구약제_5,000종 리스트.xlsx"
+DEFAULT_EXCEL_PATH = (
+    ROOT / "경구약제 이미지 데이터(데이터 설명서, 경구약제 리스트)" / "단일 경구약제_5,000종 리스트.xlsx"
+)
 API_BASE = "https://apis.data.go.kr/1471000/DrbEasyDrugInfoService/getDrbEasyDrugList"
 
 FIELD_MAP: dict[str, str] = {
