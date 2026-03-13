@@ -1,7 +1,7 @@
 from typing import Annotated
 
 from fastapi import APIRouter, Cookie, Depends, HTTPException, status
-from fastapi.responses import JSONResponse as Response
+from fastapi.responses import JSONResponse as Response, RedirectResponse
 
 from app.core import config
 from app.core.config import Env
@@ -57,6 +57,18 @@ async def token_refresh(
     return Response(
         content=TokenRefreshResponse(access_token=str(access_token)).model_dump(), status_code=status.HTTP_200_OK
     )
+
+
+@auth_router.get("/kakao/login", status_code=status.HTTP_302_FOUND)
+async def kakao_auth_redirect(oauth_service: Annotated[OAuthService, Depends(get_oauth_service)]) -> RedirectResponse:
+    url = oauth_service.get_kakao_auth_url()
+    return RedirectResponse(url=url, status_code=302)
+
+
+@auth_router.get("/google/login", status_code=status.HTTP_302_FOUND)
+async def google_auth_redirect(oauth_service: Annotated[OAuthService, Depends(get_oauth_service)]) -> RedirectResponse:
+    url = oauth_service.get_google_auth_url()
+    return RedirectResponse(url=url, status_code=302)
 
 
 @auth_router.get("/google", response_model=OAuthUrlResponse, status_code=status.HTTP_200_OK)
