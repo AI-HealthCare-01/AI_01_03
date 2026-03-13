@@ -29,8 +29,8 @@ from app.dtos.integration import (
     VisionIdentifyRequest,
     VisionIdentifyResponse,
 )
+from app.models.drug_reference import DrugReference
 from app.models.schedules import MedicationSchedule
-from app.services.live_drug_lookup import lookup_drug_async
 from app.services.ocr import OCRService
 from app.services.prescription_flow import PrescriptionFlowService
 from app.services.vision import VisionService, VisionServiceError
@@ -163,6 +163,36 @@ def _best_effort_drug_query(*, medication_id: str, drug_name_hint: str | None = 
     if normalized_medication_id.startswith("K_"):
         return normalized_medication_id.replace("_", "-", 1)
     return normalized_medication_id.replace("_", " ")
+
+
+def _build_drug_reference_context(drug: DrugReference) -> str | None:
+    lines: list[str] = []
+
+    title_parts = [part for part in [drug.drug_name, drug.company_name] if part]
+    if title_parts:
+        if len(title_parts) == 2:
+            lines.append(f"[약품명] {title_parts[0]} — {title_parts[1]}")
+        else:
+            lines.append(f"[약품명] {title_parts[0]}")
+
+    field_map = [
+        ("효능/효과", drug.efficacy_text),
+        ("용법/용량", drug.dosage_text),
+        ("주의사항", drug.precautions_text),
+        ("경고", drug.warnings_text),
+        ("상호작용", drug.interactions_text),
+        ("부작용", drug.side_effects_text),
+        ("보관법", drug.storage_text),
+    ]
+
+    for label, value in field_map:
+        text = (value or "").strip()
+        if text:
+            lines.append(f"[{label}] {text}")
+
+    if not lines:
+        return None
+    return "\n".join(lines)
 
 
 def _build_vision_sample_record(
@@ -413,28 +443,13 @@ async def vision_identify(
 @integration_router.post("/vision/detail", response_model=VisionDetailResponse)
 async def vision_detail(request: VisionDetailRequest) -> VisionDetailResponse:
     medication_id = request.medication_id
-    query = _best_effort_drug_query(medication_id=medication_id, drug_name_hint=request.drug_name_hint)
-    if not query:
-        return VisionDetailResponse(
-            success=False,
-            error_code="DRUG_QUERY_REQUIRED",
-            medication_id=medication_id,
-            drug_name=None,
-            context_text=None,
-        )
+    drug = await DrugReference.get_or_none(medication_id=medication_id)
 
-    try:
-        result = await lookup_drug_async(query)
-    except Exception:
-        return VisionDetailResponse(
-            success=False,
-            error_code="VISION_DETAIL_LOOKUP_FAILED",
-            medication_id=medication_id,
-            drug_name=None,
-            context_text=None,
-        )
+    hint = (request.drug_name_hint or "").strip()
+    if drug is None and hint:
+        drug = await DrugReference.filter(drug_name__icontains=hint).order_by("-updated_at").first()
 
-    if not result:
+    if drug is None:
         return VisionDetailResponse(
             success=False,
             error_code="DRUG_INFO_NOT_FOUND",
@@ -443,12 +458,12 @@ async def vision_detail(request: VisionDetailRequest) -> VisionDetailResponse:
             context_text=None,
         )
 
-    context_text, drug_name = result
+    context_text = _build_drug_reference_context(drug)
     return VisionDetailResponse(
         success=True,
         error_code=None,
         medication_id=medication_id,
-        drug_name=drug_name,
+        drug_name=drug.drug_name,
         context_text=context_text,
     )
 
