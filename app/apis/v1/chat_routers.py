@@ -106,6 +106,10 @@ async def chat(request: ChatRequest) -> ORJSONResponse:
             logger.warning("실시간 조회도 실패 — GPT 직접 답변 시도")
             rag_context = ""
             rag_citations = []
+            try:
+                raw_answer = await _llm_service.generate_answer(context="", question=question)
+            except Exception:
+                logger.exception("LLM 재호출 실패 (live lookup 실패 후)")
 
     # ── Step 5: 응답 조립 ──
     response_data = _llm_service.build_success_response(
