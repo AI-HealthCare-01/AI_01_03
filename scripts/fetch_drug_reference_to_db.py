@@ -31,6 +31,7 @@ DEFAULT_EXCEL_PATH = (
     ROOT / "경구약제 이미지 데이터(데이터 설명서, 경구약제 리스트)" / "단일 경구약제_5,000종 리스트.xlsx"
 )
 API_BASE = "https://apis.data.go.kr/1471000/DrbEasyDrugInfoService/getDrbEasyDrugList"
+FAISS_META_PATH = ROOT / "data" / "faiss_meta.json"
 
 FIELD_MAP: dict[str, str] = {
     "efcyQesitm": "efficacy_text",
@@ -76,6 +77,41 @@ def strip_html(text: str | None) -> str:
     value = value.replace("\xa0", " ")
     value = re.sub(r"\n{3,}", "\n\n", value)
     return value.strip()
+
+
+def normalize_name_for_match(value: str) -> str:
+    text = (value or "").strip().lower()
+    if not text:
+        return ""
+    text = re.sub(r"\([^)]*\)", " ", text)
+    text = re.sub(r"\b\d+(?:\.\d+)?\s*(mg|ml|g|mcg|μg|iu)\b", " ", text, flags=re.IGNORECASE)
+    text = re.sub(r"\b\d+\s*[tc]\b", " ", text, flags=re.IGNORECASE)
+    text = re.sub(r"\s+", " ", text).strip()
+    return text.replace(" ", "")
+
+
+def load_faiss_normalized_names(path: Path) -> set[str]:
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return set()
+
+    if not isinstance(payload, dict):
+        return set()
+
+    entries = payload.get("entries", [])
+    if not isinstance(entries, list):
+        return set()
+
+    normalized: set[str] = set()
+    for entry in entries:
+        if not isinstance(entry, dict):
+            continue
+        name = str(entry.get("name", "")).strip()
+        key = normalize_name_for_match(name)
+        if key:
+            normalized.add(key)
+    return normalized
 
 
 def normalize_medication_id(c_code: str, name: str) -> str:
@@ -228,6 +264,7 @@ def main() -> int:
         "total_rows": 0,
         "target_rows": 0,
         "processed": 0,
+        "skipped_by_faiss_overlap": 0,
         "api_success": 0,
         "api_not_found_skipped": 0,
         "row_invalid_skipped": 0,
@@ -250,6 +287,7 @@ def main() -> int:
         if args.limit and args.limit > 0:
             sliced = sliced[: args.limit]
         stats["target_rows"] = len(sliced)
+        faiss_name_set = load_faiss_normalized_names(FAISS_META_PATH)
 
         payloads: list[dict[str, Any]] = []
 
@@ -259,6 +297,10 @@ def main() -> int:
             name = (row.get("name") or "").strip()
             if not c_code or not name:
                 stats["row_invalid_skipped"] += 1
+                continue
+
+            if normalize_name_for_match(name) in faiss_name_set:
+                stats["skipped_by_faiss_overlap"] += 1
                 continue
 
             detail = fetch_drug_detail(api_key=api_key, product_name=name)
@@ -302,6 +344,7 @@ def main() -> int:
         print(f"[STAT] total_rows={stats['total_rows']}")
         print(f"[STAT] target_rows={stats['target_rows']}")
         print(f"[STAT] processed={stats['processed']}")
+        print(f"[STAT] skipped_by_faiss_overlap={stats['skipped_by_faiss_overlap']}")
         print(f"[STAT] api_success={stats['api_success']}")
         print(f"[STAT] api_not_found_skipped={stats['api_not_found_skipped']}")
         print(f"[STAT] row_invalid_skipped={stats['row_invalid_skipped']}")
