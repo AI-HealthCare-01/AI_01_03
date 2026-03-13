@@ -95,6 +95,39 @@ def _extract_drug_name_from_query(query: str) -> str:
     return name.strip()
 
 
+def extract_drug_names_multi(query: str) -> list[str]:
+    """질문에서 여러 약품명을 추출합니다.
+
+    예) "타이레놀 아스피린이랑 같이 먹어도되?" → ["타이레놀", "아스피린"]
+        "게보린하고 타이레놀 병용" → ["게보린", "타이레놀"]
+        "타이레놀 알려줘" → ["타이레놀"]
+    """
+    # 병용/상호작용 관련 패턴 제거
+    cleaned = re.sub(
+        r"(같이|함께|동시에|병용|섞어|혼합|먹어도\s*되|먹어도\s*돼|복용해도|괜찮|될까|되나|되는지|안\s*되|위험|상호작용)\S*",
+        " ",
+        query,
+    )
+    # 조사 분리: "아스피린이랑" → "아스피린"
+    cleaned = re.sub(
+        r"(이랑|이란|하고|와|과|랑|또는|혹은|그리고|에다가)\b",
+        " ",
+        cleaned,
+    )
+    # 나머지 일반 단어 제거
+    cleaned = re.sub(
+        r"\b(알려줘|알려주세요|뭐야|어때|좀|요|은|는|이|가|을|를|에|도|까)\b",
+        " ",
+        cleaned,
+    )
+
+    # 남은 토큰 중 2자 이상인 것만 약품명 후보
+    candidates = [t.strip() for t in cleaned.split() if len(t.strip()) >= 2]
+    # 일반 단어 필터링
+    general_words = {"복용", "먹어", "약국", "질문", "정보", "사항", "주의", "부작용", "효능", "용법"}
+    return [c for c in candidates if c not in general_words]
+
+
 def _build_search_names(drug_name: str) -> list[str]:
     """약품명에서 검색 키워드 후보를 생성."""
     candidates: list[str] = []
@@ -313,28 +346,49 @@ def _build_context_from_info(info: dict) -> str:
     return "\n".join(lines)
 
 
+def _lookup_single_drug(search_names: list[str]) -> dict | None:
+    """단일 약품 조회 (e약은요 → DUR+PDF 순서)."""
+    for name in search_names:
+        info = _easy_drug_lookup(name)
+        if info:
+            return info
+    for name in search_names:
+        info = _dur_pdf_lookup(name)
+        if info:
+            return info
+    return None
+
+
 def lookup_drug(drug_name: str) -> tuple[str, str] | None:
     """
-    실시간 약품 조회.
+    실시간 약품 조회. 다약품 쿼리(병용 질문)도 지원.
 
     Returns:
         (context_text, drug_name) 또는 None (찾지 못한 경우).
     """
+    # 먼저 다약품 쿼리인지 확인
+    multi_names = extract_drug_names_multi(drug_name)
+    if len(multi_names) >= 2:
+        contexts = []
+        found_names = []
+        for mn in multi_names:
+            search_names = _build_search_names(mn)
+            info = _lookup_single_drug(search_names)
+            if info:
+                contexts.append(_build_context_from_info(info))
+                found_names.append(info.get("name", mn))
+                logger.info("다약품 조회 성공: %s -> %s", mn, info.get("name"))
+        if contexts:
+            combined = "\n\n".join(contexts)
+            combined_name = " + ".join(found_names)
+            return combined, combined_name
+
+    # 단일 약품 조회
     search_names = _build_search_names(drug_name)
-
-    for name in search_names:
-        # 1) e약은요 (빠름, 일반의약품 위주)
-        info = _easy_drug_lookup(name)
-        if info:
-            logger.info("실시간 조회 성공 (e약은요): %s -> %s", drug_name, info.get("name"))
-            return _build_context_from_info(info), info.get("name", drug_name)
-
-    for name in search_names:
-        # 2) DUR + PDF (느림, 전문의약품 포함)
-        info = _dur_pdf_lookup(name)
-        if info:
-            logger.info("실시간 조회 성공 (DUR+PDF): %s -> %s", drug_name, info.get("name"))
-            return _build_context_from_info(info), info.get("name", drug_name)
+    info = _lookup_single_drug(search_names)
+    if info:
+        logger.info("실시간 조회 성공: %s -> %s", drug_name, info.get("name"))
+        return _build_context_from_info(info), info.get("name", drug_name)
 
     logger.info("실시간 조회 실패: %s", drug_name)
     return None
