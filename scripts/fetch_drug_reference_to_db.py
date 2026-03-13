@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import csv
 import json
 import re
 import time
@@ -47,6 +48,7 @@ FIELD_MAP: dict[str, str] = {
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Fetch e약은요 data and upsert into drug_references")
     parser.add_argument("--excel-path", type=Path, default=DEFAULT_EXCEL_PATH)
+    parser.add_argument("--input-csv", type=Path, default=None, help="optional gap csv path with c_code,name")
     parser.add_argument("--limit", type=int, default=0, help="0 means all")
     parser.add_argument("--sleep", type=float, default=0.3, help="sleep seconds between API calls")
     parser.add_argument("--dry-run", action="store_true", help="fetch/map only, do not write DB")
@@ -222,6 +224,21 @@ def read_excel(excel_path: Path) -> list[dict[str, str]]:
     return rows
 
 
+def read_input_csv(input_csv: Path) -> list[dict[str, str]]:
+    rows: list[dict[str, str]] = []
+    seen_codes: set[str] = set()
+    with input_csv.open("r", encoding="utf-8", newline="") as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            c_code = str((row or {}).get("c_code", "")).replace("'", "").strip()
+            name = str((row or {}).get("name", "")).replace("'", "").strip()
+            if not c_code or not name or c_code in seen_codes:
+                continue
+            seen_codes.add(c_code)
+            rows.append({"c_code": c_code, "name": name})
+    return rows
+
+
 def build_tortoise_config(db_host: str | None) -> dict[str, Any]:
     cfg = deepcopy(TORTOISE_ORM)
     if db_host:
@@ -280,14 +297,19 @@ def main() -> int:
             print("[ERROR] DATA_GO_KR_API_KEY_ENCODED is missing in .env")
             return 1
 
-        all_rows = read_excel(args.excel_path)
+        if args.input_csv is not None:
+            all_rows = read_input_csv(args.input_csv)
+            apply_faiss_skip = False
+        else:
+            all_rows = read_excel(args.excel_path)
+            apply_faiss_skip = True
         stats["total_rows"] = len(all_rows)
 
         sliced = all_rows[max(0, args.start_index) :]
         if args.limit and args.limit > 0:
             sliced = sliced[: args.limit]
         stats["target_rows"] = len(sliced)
-        faiss_name_set = load_faiss_normalized_names(FAISS_META_PATH)
+        faiss_name_set = load_faiss_normalized_names(FAISS_META_PATH) if apply_faiss_skip else set()
 
         payloads: list[dict[str, Any]] = []
 
@@ -299,7 +321,7 @@ def main() -> int:
                 stats["row_invalid_skipped"] += 1
                 continue
 
-            if normalize_name_for_match(name) in faiss_name_set:
+            if apply_faiss_skip and normalize_name_for_match(name) in faiss_name_set:
                 stats["skipped_by_faiss_overlap"] += 1
                 continue
 
