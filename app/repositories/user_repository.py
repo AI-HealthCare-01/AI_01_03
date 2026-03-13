@@ -46,6 +46,19 @@ class UserRepository:
     async def get_user_by_email(self, email: str) -> User | None:
         return await self._model.get_or_none(email=email)
 
+    async def get_user_by_sns_id(self, sns_id: str, provider: str) -> User | None:
+        return await self._model.get_or_none(sns_id=sns_id, provider=provider)
+
+    async def create_social_user(self, email: str, name: str, sns_id: str, provider: str) -> User:
+        return await self._model.create(
+            email=email,
+            name=name,
+            sns_id=sns_id,
+            provider=provider,
+            is_active=True,
+            is_admin=False,
+        )
+
     async def exists_by_email(self, email: str) -> bool:
         return await self._model.filter(email=email).exists()
 

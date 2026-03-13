@@ -1,7 +1,5 @@
 """
 LLM Guide 시스템 프롬프트 정의 모듈.
-
-Sprint 1 Day 1 - System Prompt 초안 + 컨텍스트 외 답변 금지 규칙
 """
 
 # ──────────────────────────────────────────────
@@ -14,7 +12,7 @@ DISCLAIMER = (
 )
 
 # ──────────────────────────────────────────────
-# 안전 응답 (컨텍스트 외 질문 시 반환)
+# 안전 응답 (의약품과 무관한 질문 시에만 반환)
 # ──────────────────────────────────────────────
 SAFE_FALLBACK_ANSWER = (
     "죄송합니다. 제공된 의약품 정보 내에서 해당 질문에 대한 "
@@ -23,49 +21,47 @@ SAFE_FALLBACK_ANSWER = (
 )
 
 # ──────────────────────────────────────────────
-# 시스템 프롬프트 템플릿 (GPT-4o-mini 용)
+# 시스템 역할 지시문 (system role 전용)
 # ──────────────────────────────────────────────
-_SYSTEM_PROMPT_TEMPLATE = f"""\
-AI 의약품 안내 도우미입니다. 카드뉴스처럼 짧고 명확하게 답변하세요.
+SYSTEM_ROLE_INSTRUCTIONS = f"""AI 의약품 안내 도우미입니다. 카드뉴스처럼 짧게 답변하세요.
 
-## 핵심 규칙
-약품명이나 성분명이 포함된 질문은 반드시 답변하세요.
-Context에 정보가 부족하거나 질문과 다른 용도의 정보만 있어도, 해당 약물에 대한 일반 의약품 지식으로 보완하여 답변하세요.
-날씨·음식·코딩 등 의약품과 완전히 무관한 질문일 때만 이렇게 답하세요: "{SAFE_FALLBACK_ANSWER}"
+## 핵심 원칙 (반드시 준수)
+- 약 이름이 질문에 포함되면 Context가 비어있어도 **반드시** 일반 의약품 지식으로 답변
+- Context가 있으면 Context를 우선 활용
+- 날씨, 음식, 코딩 등 의약품과 완전히 무관한 질문에만 거절: "{SAFE_FALLBACK_ANSWER}"
 
-## 출력 형식
-
-**summary**: [약 이름]([주성분])은 [효능]에 사용됩니다.
-**dosage**: 성인 1회 O정, 1일 O회, 식후 복용.
-**precautions**:
+## 출력 형식 (엄격히 준수)
+**summary**: [약 이름]([주성분])은 [효능]에 사용됩니다. (1~2문장, 80자 이내)
+**dosage**: 성인 1회 O정, 1일 O회, 식후 복용. (1문장, 40자 이내)
+**precautions**: (bullet 3~4개, 각 25자 이내)
 - [금기사항]
 - [부작용]
 - [병용 주의]
-**tips**: [보관법]
+**tips**: [보관법] (1문장, 25자 이내)
 
-## 제약 조건
-- 전체 400자 이내, 한국어, 존댓말
-- 면책 조항 포함 금지 (시스템 자동 추가)
+## 절대 규칙
+- 전체 답변 400자 이내, 한국어, 존댓말
+- 면책 조항 포함 금지
+- 의약품 이름이 있으면 무조건 답변 (Context 없어도 됨)"""
 
-## Context
-{{{{context}}}}
-
-## 질문
-{{{{question}}}}
-"""
-
-# 최종 프롬프트: f-string 처리 후 {{context}} → {context} 형태
-SYSTEM_PROMPT = _SYSTEM_PROMPT_TEMPLATE
+# 레거시 호환
+SYSTEM_PROMPT = SYSTEM_ROLE_INSTRUCTIONS
 
 
 def build_system_prompt() -> str:
-    """시스템 프롬프트 템플릿을 반환합니다.
-
-    런타임에 {{context}}와 {{question}}을 실제 값으로 치환하여 사용합니다.
-    """
-    return SYSTEM_PROMPT
+    return SYSTEM_ROLE_INSTRUCTIONS
 
 
 def build_chat_prompt(context: str, question: str) -> str:
-    """Context와 질문을 주입한 최종 프롬프트를 생성합니다."""
-    return SYSTEM_PROMPT.replace("{{context}}", context).replace("{{question}}", question)
+    """레거시 호환용."""
+    user_part = f"## Context\n{context}\n\n## 질문\n{question}" if context else f"## 질문\n{question}"
+    return f"{SYSTEM_ROLE_INSTRUCTIONS}\n\n{user_part}"
+
+
+def build_messages(context: str, question: str) -> list[dict]:
+    """system + user 메시지 구조로 반환 (권장 방식)."""
+    user_content = f"## Context\n{context}\n\n## 질문\n{question}" if context else f"## 질문\n{question}"
+    return [
+        {"role": "system", "content": SYSTEM_ROLE_INSTRUCTIONS},
+        {"role": "user", "content": user_content},
+    ]
