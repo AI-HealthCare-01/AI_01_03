@@ -37,9 +37,9 @@ def _parse_dose_text(dose_text: str) -> tuple[str, str, str, str]:
     # 형식 1: 1정씩3회3일분
     m = _DOSE_PARSE_NEW.search(dose_text)
     if m:
-        dosage = m.group(1)   # "1정" or "1캡슐"
-        freq = m.group(2)     # "3"
-        duration = m.group(3) # "3"
+        dosage = m.group(1)  # "1정" or "1캡슐"
+        freq = m.group(2)  # "3"
+        duration = m.group(3)  # "3"
         return dosage, f"하루 {freq}회", f"{duration}일", "식후"
     # 형식 2: 3일 2회, 3일분
     m = _DOSE_PARSE_OLD.search(dose_text)
@@ -56,7 +56,9 @@ async def _parse_with_gpt(text: str) -> list[PrescriptionOcrItem]:
         return []
     try:
         import json as _json
+
         from openai import AsyncOpenAI
+
         client = AsyncOpenAI(api_key=config.OPENAI_API_KEY)
         completion = await client.chat.completions.create(
             model="gpt-4o-mini",
@@ -69,8 +71,8 @@ async def _parse_with_gpt(text: str) -> list[PrescriptionOcrItem]:
                     "content": (
                         "너는 한국 처방전 OCR 텍스트에서 약품 정보를 추출하는 어시스턴트다. "
                         "반드시 JSON object만 반환하라. "
-                        "형식: {\"items\": [{\"name\": \"약품명\", \"dosage\": \"1정\", "
-                        "\"frequency\": \"하루 3회\", \"duration\": \"3일\", \"schedule\": \"식후\"}]}"
+                        '형식: {"items": [{"name": "약품명", "dosage": "1정", '
+                        '"frequency": "하루 3회", "duration": "3일", "schedule": "식후"}]}'
                     ),
                 },
                 {
@@ -102,7 +104,7 @@ async def _parse_with_gpt(text: str) -> list[PrescriptionOcrItem]:
 @medicines_router.post("/ocr/prescription", response_model=PrescriptionOcrResponse)
 async def ocr_prescription(
     ocr_service: Annotated[OCRService, Depends(OCRService)],
-    image: UploadFile = File(...),
+    image: UploadFile = File(...),  # noqa: B008
 ) -> PrescriptionOcrResponse:
     image_bytes = await image.read()
     content_type = image.content_type or "image/jpeg"
@@ -120,10 +122,15 @@ async def ocr_prescription(
     items = []
     for med in medications:
         dosage, frequency, duration, schedule = _parse_dose_text(med.dose_text)
-        items.append(PrescriptionOcrItem(
-            name=med.name, dosage=dosage,
-            frequency=frequency, duration=duration, schedule=schedule,
-        ))
+        items.append(
+            PrescriptionOcrItem(
+                name=med.name,
+                dosage=dosage,
+                frequency=frequency,
+                duration=duration,
+                schedule=schedule,
+            )
+        )
 
     # 2차: regex 결과 없으면 GPT fallback
     if not items:
@@ -133,6 +140,7 @@ async def ocr_prescription(
 
 
 # ── TTS ──────────────────────────────────────────────────────────────────────
+
 
 class MedicineTTSRequest(BaseModel):
     guide_id: str = ""
@@ -179,7 +187,9 @@ async def get_medicine_info(request: MedicineInfoRequest) -> MedicineInfoRespons
         raise HTTPException(status_code=503, detail="OpenAI API key not configured")
     try:
         import json as _json
+
         from openai import AsyncOpenAI
+
         client = AsyncOpenAI(api_key=config.OPENAI_API_KEY)
         completion = await client.chat.completions.create(
             model="gpt-4o-mini",
@@ -214,6 +224,7 @@ async def get_medicine_info(request: MedicineInfoRequest) -> MedicineInfoRespons
 
 # ── 알약 인식 ──────────────────────────────────────────────────────────────────
 
+
 class MedicineRecognizeResponse(BaseModel):
     medicine_name: str
 
@@ -221,7 +232,7 @@ class MedicineRecognizeResponse(BaseModel):
 @medicines_router.post("/recognize", response_model=MedicineRecognizeResponse)
 async def recognize_pill(
     vision_service: Annotated[VisionService, Depends(VisionService)],
-    image: UploadFile = File(...),
+    image: UploadFile = File(...),  # noqa: B008
 ) -> MedicineRecognizeResponse:
     image_bytes = await image.read()
 

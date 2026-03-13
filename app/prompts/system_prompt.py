@@ -60,11 +60,7 @@ def build_chat_prompt(context: str, question: str) -> str:
 
 def build_messages(context: str, question: str) -> list[dict]:
     """system + user 메시지 구조로 반환 (권장 방식)."""
-    user_content = (
-        f"## Context\n{context}\n\n## 질문\n{question}"
-        if context
-        else f"## 질문\n{question}"
-    )
+    user_content = f"## Context\n{context}\n\n## 질문\n{question}" if context else f"## 질문\n{question}"
     return [
         {"role": "system", "content": SYSTEM_ROLE_INSTRUCTIONS},
         {"role": "user", "content": user_content},

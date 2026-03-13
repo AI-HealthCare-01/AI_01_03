@@ -96,4 +96,3 @@ class AuthService:
                 birthday=date(2000, 1, 1),  # 기본값
             )
             return user
-

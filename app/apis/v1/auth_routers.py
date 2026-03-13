@@ -1,16 +1,18 @@
 from typing import Annotated
 
 from fastapi import APIRouter, Cookie, Depends, HTTPException, status
-from fastapi.responses import JSONResponse as Response, RedirectResponse
+from fastapi.responses import JSONResponse as Response
+from fastapi.responses import RedirectResponse
 
 from app.core import config
 from app.core.config import Env
-from app.dtos.auth import LoginRequest, LoginResponse, SignUpRequest, TokenRefreshResponse, OAuthUrlResponse
+from app.dtos.auth import LoginRequest, LoginResponse, OAuthUrlResponse, SignUpRequest, TokenRefreshResponse
 from app.services.auth import AuthService
 from app.services.jwt import JwtService
 from app.services.oauth import OAuthService
 
 auth_router = APIRouter(prefix="/auth", tags=["auth"])
+
 
 def get_oauth_service() -> OAuthService:
     return OAuthService(config)

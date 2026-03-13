@@ -1,16 +1,15 @@
 import logging
 import urllib.parse
-from fastapi import HTTPException, status
+
 import httpx
-from pydantic import ValidationError
+from fastapi import HTTPException, status
 
 from app.core.config import Config
-from app.dtos.auth import OAuthCallbackRequest
-from app.models.users import User
 from app.repositories.user_repository import UserRepository
 from app.services.jwt import JwtService
 
 logger = logging.getLogger("oauth")
+
 
 class OAuthService:
     def __init__(self, config: Config):
@@ -26,7 +25,7 @@ class OAuthService:
             "response_type": "code",
             "scope": "openid email profile",
             "access_type": "offline",
-            "prompt": "consent"
+            "prompt": "consent",
         }
         return f"{base_url}?{urllib.parse.urlencode(params)}"
 
@@ -48,26 +47,28 @@ class OAuthService:
             "grant_type": "authorization_code",
             "redirect_uri": self.config.GOOGLE_REDIRECT_URI,
         }
-        
+
         async with httpx.AsyncClient() as client:
             token_response = await client.post(token_url, data=data)
             if token_response.status_code != 200:
                 logger.error(f"Google Token Error: {token_response.text}")
                 raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Failed to retrieve Google token")
-            
+
             token_data = token_response.json()
             access_token = token_data.get("access_token")
 
             userinfo_url = "https://www.googleapis.com/oauth2/v2/userinfo"
             headers = {"Authorization": f"Bearer {access_token}"}
             user_response = await client.get(userinfo_url, headers=headers)
-            
+
             if user_response.status_code != 200:
                 logger.error(f"Google UserInfo Error: {user_response.text}")
-                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Failed to retrieve Google user info")
-            
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST, detail="Failed to retrieve Google user info"
+                )
+
             user_info = user_response.json()
-            
+
         email = user_info.get("email")
         sns_id = user_info.get("id")
         name = user_info.get("name", "Google User")
@@ -83,24 +84,26 @@ class OAuthService:
             "redirect_uri": self.config.KAKAO_REDIRECT_URI,
             "code": code,
         }
-        
+
         async with httpx.AsyncClient() as client:
             token_response = await client.post(token_url, data=data)
             if token_response.status_code != 200:
                 logger.error(f"Kakao Token Error: {token_response.text}")
                 raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Failed to retrieve Kakao token")
-            
+
             token_data = token_response.json()
             access_token = token_data.get("access_token")
 
             userinfo_url = "https://kapi.kakao.com/v2/user/me"
             headers = {"Authorization": f"Bearer {access_token}"}
             user_response = await client.get(userinfo_url, headers=headers)
-            
+
             if user_response.status_code != 200:
                 logger.error(f"Kakao UserInfo Error: {user_response.text}")
-                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Failed to retrieve Kakao user info")
-            
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST, detail="Failed to retrieve Kakao user info"
+                )
+
             user_info = user_response.json()
 
         kakao_account = user_info.get("kakao_account", {})
@@ -113,24 +116,21 @@ class OAuthService:
 
     async def _process_social_login(self, email: str, name: str, sns_id: str, provider: str) -> dict:
         user = await self.user_repo.get_user_by_sns_id(sns_id, provider)
-        
+
         if not user:
             if email:
                 existing_user = await self.user_repo.get_user_by_email(email)
                 if existing_user and existing_user.provider != provider:
-                     logger.warning(f"Email {email} already used by provider {existing_user.provider}")
-                     raise HTTPException(
-                         status_code=status.HTTP_409_CONFLICT, 
-                         detail=f"이미 {existing_user.provider}로 가입된 이메일입니다."
-                     )
-            
+                    logger.warning(f"Email {email} already used by provider {existing_user.provider}")
+                    raise HTTPException(
+                        status_code=status.HTTP_409_CONFLICT,
+                        detail=f"이미 {existing_user.provider}로 가입된 이메일입니다.",
+                    )
+
             user = await self.user_repo.create_social_user(
-                email=email or f"{sns_id}@{provider}.com",
-                name=name,
-                sns_id=sns_id,
-                provider=provider
+                email=email or f"{sns_id}@{provider}.com", name=name, sns_id=sns_id, provider=provider
             )
-            
+
         await self.user_repo.update_last_login(user.id)
         tokens = self.jwt_service.issue_jwt_pair(user)
         return tokens
