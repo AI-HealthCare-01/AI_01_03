@@ -19,6 +19,7 @@ from app.prompts.system_prompt import (
     DISCLAIMER,
     SAFE_FALLBACK_ANSWER,
     build_chat_prompt,
+    build_messages,
 )
 
 logger = logging.getLogger("llm_guide")
@@ -174,11 +175,11 @@ class LLMGuideService:
         }
 
     # ── LLM 호출 ─────────────────────────────────
-    async def call_openai(self, prompt: str) -> str:
-        """GPT-4o-mini 호출."""
+    async def call_openai(self, messages: list[dict]) -> str:
+        """GPT-4o-mini 호출 (system + user 메시지 구조)."""
         resp = await _openai_client.chat.completions.create(
             model=_cfg.OPENAI_MODEL,
-            messages=[{"role": "user", "content": prompt}],
+            messages=messages,
             max_tokens=_cfg.OPENAI_MAX_TOKENS,
             temperature=_cfg.OPENAI_TEMPERATURE,
         )
@@ -186,8 +187,8 @@ class LLMGuideService:
 
     async def generate_answer(self, context: str, question: str) -> str:
         """RAG 컨텍스트 + 질문으로 GPT-4o-mini 답변 생성."""
-        prompt = self.build_prompt(context=context, question=question)
-        return await self.call_openai(prompt)
+        messages = build_messages(context=context, question=question)
+        return await self.call_openai(messages)
 
     # ── 컨텍스트 외 질문 감지 (추가 가드레일) ─
     @staticmethod
