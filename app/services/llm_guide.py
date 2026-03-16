@@ -19,6 +19,7 @@ from app.prompts.system_prompt import (
     DISCLAIMER,
     SAFE_FALLBACK_ANSWER,
     build_chat_prompt,
+    build_messages,
 )
 
 logger = logging.getLogger("llm_guide")
@@ -174,11 +175,11 @@ class LLMGuideService:
         }
 
     # ── LLM 호출 ─────────────────────────────────
-    async def call_openai(self, prompt: str) -> str:
-        """GPT-4o-mini 호출."""
+    async def call_openai(self, messages: list[dict]) -> str:
+        """GPT-4o-mini 호출 (system + user 메시지 구조)."""
         resp = await _openai_client.chat.completions.create(
             model=_cfg.OPENAI_MODEL,
-            messages=[{"role": "user", "content": prompt}],
+            messages=messages,
             max_tokens=_cfg.OPENAI_MAX_TOKENS,
             temperature=_cfg.OPENAI_TEMPERATURE,
         )
@@ -186,8 +187,35 @@ class LLMGuideService:
 
     async def generate_answer(self, context: str, question: str) -> str:
         """RAG 컨텍스트 + 질문으로 GPT-4o-mini 답변 생성."""
-        prompt = self.build_prompt(context=context, question=question)
-        return await self.call_openai(prompt)
+        messages = build_messages(context=context, question=question)
+        return await self.call_openai(messages)
+
+    async def generate_answer_general(self, question: str) -> str:
+        """일반 의약품 지식으로 GPT-4o-mini 답변 생성 (컨텍스트 없음)."""
+        system = (
+            "AI 의약품 안내 도우미입니다. 일반 의약품 지식으로 카드뉴스처럼 짧고 명확하게 답변하세요.\n\n"
+            "## 핵심 원칙\n"
+            "- 약 이름이 질문에 포함되면 **반드시** 일반 지식으로 답변\n"
+            "- 두 가지 이상 약의 병용(같이 복용) 질문도 반드시 답변\n"
+            "- 거절하지 마세요. 의약품 관련 질문이면 무조건 답변하세요.\n\n"
+            "## 출력 형식\n"
+            "**summary**: [약 이름]([주성분])은 [효능]에 사용됩니다. (1~2문장, 80자 이내)\n"
+            "**dosage**: 성인 1회 O정, 1일 O회, 식후 복용. (1문장, 40자 이내)\n"
+            "**precautions**: (bullet 3~4개, 각 25자 이내)\n"
+            "- [금기사항]\n"
+            "- [부작용]\n"
+            "- [병용 주의]\n"
+            "**tips**: [보관법] (1문장, 25자 이내)\n\n"
+            "## 제약 조건\n"
+            "- 전체 400자 이내, 한국어, 존댓말\n"
+            "- 면책 조항 포함 금지\n"
+            "- '죄송합니다', '찾을 수 없습니다' 같은 거절 문구 절대 사용 금지\n"
+        )
+        messages = [
+            {"role": "system", "content": system},
+            {"role": "user", "content": f"## 질문\n{question}"},
+        ]
+        return await self.call_openai(messages)
 
     # ── 컨텍스트 외 질문 감지 (추가 가드레일) ─
     @staticmethod

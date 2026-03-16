@@ -1,3 +1,5 @@
+from datetime import date
+
 from fastapi.exceptions import HTTPException
 from pydantic import EmailStr
 from starlette import status
@@ -72,3 +74,26 @@ class AuthService:
     async def check_phone_number_exists(self, phone_number: str) -> None:
         if await self.user_repo.exists_by_phone_number(phone_number):
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="이미 사용중인 휴대폰 번호입니다.")
+
+    async def get_or_create_oauth_user(self, email: str, name: str, provider: str) -> User:
+        """소셜 로그인 사용자를 이메일로 조회하고, 없으면 자동 회원가입합니다."""
+        import uuid
+
+        user = await self.user_repo.get_user_by_email(email)
+        if user:
+            return user
+
+        # OAuth 사용자는 비밀번호 로그인을 사용하지 않으므로 랜덤 비밀번호 생성
+        random_password = hash_password(uuid.uuid4().hex)
+
+        async with in_transaction():
+            user = await self.user_repo.create_user(
+                email=email,
+                hashed_password=random_password,
+                name=name,
+                phone_number="00000000000",  # OAuth 사용자는 전화번호 미제공
+                gender="MALE",  # 기본값 (추후 프로필 수정에서 변경 가능)
+                birthday=date(2000, 1, 1),  # 기본값
+            )
+            return user
+

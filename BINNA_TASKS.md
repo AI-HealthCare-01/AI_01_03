@@ -114,7 +114,7 @@
 ## 📅 03/06(금)
 
 ### 오전
-* [ ] UI PR 리뷰
+* [x] UI PR 리뷰
 
 ### 오후
 * [x] 문장 단위 분할(TTS 세그먼트)
@@ -177,6 +177,25 @@
   - GPT-4o-mini: 요청당 max_tokens=1024, temperature=0.3
   - 모니터링 포인트: `llm_guide.py:call_glm()`, `call_openai()`
   - 비용 추적: Kilo AI 대시보드 + OpenAI Usage 페이지
+
+---
+
+## 📅 03/09(월) — OAuth 소셜 로그인 연동
+
+### 야간 (00:00 ~)
+* [x] 카카오 로그인 백엔드 연동
+  - 카카오 REST API 키, 클라이언트 시크릿 `.env` 등록
+  - `app/core/config.py`에 카카오 OAuth 설정 추가
+  - `auth_routers.py`에 `/auth/kakao` 및 `/auth/kakao/callback` 엔드포인트 도메인 구현
+  - 사업자 인증(이메일 필수 동의) 없이 카카오 고유 ID(`kakao_{id}@kakao.oauth`)를 가상 이메일로 사용하여 자동 회원가입 로직 연결 (`get_or_create_oauth_user`)
+  - 로그인 성공 후 JWT 기반 토큰(`access_token`, `refresh_token` 쿠키) 자동 발급
+
+* [x] 구글 로그인 백엔드 연동
+  - 구글 Cloud Console 프로젝트 생성 및 OAuth 클라이언트 ID/Secret 발급 안내/설정
+  - `.env` 및 `config.py`에 구글 OAuth 설정 추가
+  - `auth_routers.py`에 `/auth/google` 및 `/auth/google/callback` 엔드포인트 도메인 구현
+  - 구글에서 제공하는 검증된 이메일을 기반으로 자동 회원가입 로직 연결 (`get_or_create_oauth_user`)
+  - 로그인 완료 시 카카오와 동일하게 JWT 토큰 발급 처리
 
 ---
 
@@ -292,7 +311,7 @@
 | `scripts/build_faiss_index.py` | FAISS 인덱스 빌드 스크립트 |
 | `scripts/benchmark_chat.py` | 벤치마크 + 평가 질문 20개 스크립트 |
 | `data/knowledge_base.json` | 의약품 지식 JSON (4,998건) |
-| `data/faiss_index.bin` | FAISS 인덱스 (758 벡터, 384차원) |
+| `data/faiss_index.bin` | FAISS 인덱스 (4,839 벡터, 384차원) |
 | `data/faiss_meta.json` | FAISS 메타데이터 + 청크 텍스트 |
 | `data/benchmark_results.json` | 벤치마크 결과 |
 | `app/tests/chat_apis/test_chat_api.py` | Chat API 테스트 |

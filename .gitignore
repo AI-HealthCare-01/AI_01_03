@@ -38,3 +38,25 @@ cls_dataset_itemseq/
 *.pth
 *.onnx
 작업일지*
+
+# vision assets / datasets
+ai_worker/vision/assets/
+
+# Generated data (large files — .gz 압축본으로 git 관리)
+data/knowledge_base.json
+data/faiss_meta.json
+data/_checkpoint.json
+data/benchmark_results.json
+nul
+
+# Claude Prompts
+claude_prompts/
+
+# BINNA_TASKS.md
+BINNA_TASKS.md
+
+# Sprint 체크리스트
+요약(기술문서등)/06-스프린트/Sprint 02_Checklist.md
+
+# Training artifacts under runs/
+runs/

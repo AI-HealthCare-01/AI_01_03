@@ -57,16 +57,20 @@ async def chat(request: ChatRequest) -> ORJSONResponse:
             rag_citations = [{"source": "식약처 실시간 조회", "title": live_name}]
             logger.info("실시간 조회 성공: %s", live_name)
         else:
-            logger.warning("실시간 조회도 실패 — 안전 응답 반환")
-            error = _llm_service.build_safe_response()
-            return ORJSONResponse(content=error, status_code=422)
+            logger.warning("실시간 조회도 실패 — GPT 일반 지식 답변 시도")
+            rag_context = ""
+            rag_citations = []
 
     # ── Step 3: LLM 답변 생성 ──
     try:
-        raw_answer = await _llm_service.generate_answer(
-            context=rag_context,
-            question=question,
-        )
+        if rag_context:
+            raw_answer = await _llm_service.generate_answer(
+                context=rag_context,
+                question=question,
+            )
+        else:
+            # 컨텍스트 없으면 거절 문구 없는 일반 지식 프롬프트 사용
+            raw_answer = await _llm_service.generate_answer_general(question=question)
     except Exception:
         logger.exception("LLM 호출 실패")
         return ORJSONResponse(
@@ -94,14 +98,15 @@ async def chat(request: ChatRequest) -> ORJSONResponse:
                     status_code=500,
                 )
             rag_citations = [{"source": "식약처 실시간 조회", "title": live_name}]
-            if _llm_service.contains_out_of_scope_marker(raw_answer):
-                logger.warning("실시간 조회 후에도 LLM out_of_scope — 안전 응답 반환")
-                error = _llm_service.build_safe_response()
-                return ORJSONResponse(content=error, status_code=422)
-        else:
-            logger.warning("실시간 조회도 실패 — 안전 응답 반환")
-            error = _llm_service.build_safe_response()
-            return ORJSONResponse(content=error, status_code=422)
+
+        # 여전히 안전 응답이면 → 거절 문구 없는 일반 지식 프롬프트로 최종 시도
+        if _llm_service.contains_out_of_scope_marker(raw_answer):
+            logger.warning("최종 fallback — GPT 일반 지식 답변 시도 (거절 문구 없는 프롬프트)")
+            rag_citations = [{"source": "일반 의약품 지식", "title": "GPT 일반 답변"}]
+            try:
+                raw_answer = await _llm_service.generate_answer_general(question=question)
+            except Exception:
+                logger.exception("GPT 일반 지식 답변 실패")
 
     # ── Step 5: 응답 조립 ──
     response_data = _llm_service.build_success_response(
