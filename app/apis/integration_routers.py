@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import re
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Annotated
 from uuid import uuid4
@@ -260,7 +260,7 @@ def _persist_vision_sample(
 
     try:
         sample_id = uuid4().hex
-        created_at = datetime.now(datetime.UTC).isoformat()
+        created_at = datetime.now(UTC).isoformat()
         root = Path(config.VISION_SAMPLE_ROOT).expanduser()
         images_dir = root / "images"
         images_dir.mkdir(parents=True, exist_ok=True)
