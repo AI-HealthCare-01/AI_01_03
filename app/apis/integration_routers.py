@@ -367,6 +367,7 @@ async def vision_identify(
 
     merged_confidence: dict[str, float] = {}
     medication_map = _load_vision_medication_map()
+    allowed_medication_ids = {_normalize_medication_id(value) for value in medication_map.values() if value}
     detection_boxes = [detection.bbox for detection in vision_result.detections]
     raw_detections = [
         {
@@ -381,6 +382,8 @@ async def vision_identify(
     for detection in vision_result.detections:
         for candidate in detection.candidates:
             medication_id = _to_medication_id(candidate.drug_name, medication_map)
+            if allowed_medication_ids and medication_id not in allowed_medication_ids:
+                continue
             existing = merged_confidence.get(medication_id)
             if existing is None or candidate.confidence > existing:
                 merged_confidence[medication_id] = candidate.confidence
