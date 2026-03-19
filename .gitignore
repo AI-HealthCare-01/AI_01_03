@@ -56,3 +56,7 @@ BINNA_TASKS.md
 
 # Training artifacts under runs/
 runs/
+
+# 가이드 문서 (API 키 포함 가능)
+미니PC_서버_셋팅_가이드.md
+n8n_블로그_자동발간_가이드.md
