@@ -70,6 +70,7 @@ services:
   # 4. AI Worker (Redis 큐 기반 Vision 태스크 워커)
   ai-worker:
     container_name: ai-worker
+    platform: linux/amd64
     build:
       context: .
       dockerfile: ai_worker/Dockerfile
