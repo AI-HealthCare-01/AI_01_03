@@ -112,21 +112,24 @@ class RAGSearchService:
         ).strip()
         return name.lower()
 
-    def _keyword_match_indices(self, query: str) -> list[int]:
-        """쿼리에서 약품명 키워드와 일치하는 인덱스를 반환합니다.
+    def _keyword_match_indices(self, query: str) -> dict[int, float]:
+        """쿼리에서 약품명 키워드와 일치하는 인덱스 → 부스트 점수를 반환합니다.
 
-        양방향 매칭: 약품 코어명이 쿼리에 포함되거나, 쿼리 단어가 약품 코어명에 포함.
+        정확 매칭(코어명 == 쿼리 토큰)은 높은 부스트, 부분 매칭은 낮은 부스트.
         """
-        matched: list[int] = []
+        matched: dict[int, float] = {}
         q_lower = query.lower()
         q_tokens = [t for t in q_lower.split() if len(t) >= 2]
         for i, m in enumerate(self._meta):
             core_name = self._extract_core_name(m.get("name", ""))
             if len(core_name) < 2:
                 continue
-            # 약품명 → 쿼리 포함 또는 쿼리 토큰 → 약품명 포함
-            if core_name in q_lower or any(t in core_name for t in q_tokens):
-                matched.append(i)
+            # 정확 매칭: 쿼리 토큰과 코어명이 동일
+            if core_name in q_tokens or core_name == q_lower:
+                matched[i] = 0.8  # 높은 부스트
+            # 부분 매칭: 코어명이 쿼리에 포함되거나 쿼리 토큰이 코어명에 포함
+            elif core_name in q_lower or any(t in core_name for t in q_tokens):
+                matched[i] = 0.3  # 낮은 부스트
         return matched
 
     def search(self, query: str, top_k: int = 3) -> list[SearchResult]:
@@ -151,25 +154,24 @@ class RAGSearchService:
         fetch_k = max(top_k * 3, 10)
         scores, indices = self._index.search(query_np, fetch_k)
 
-        # 키워드 매칭 부스팅
-        keyword_indices = set(self._keyword_match_indices(query))
-        name_boost = 0.5  # 약품명 일치 시 score 부스트
+        # 키워드 매칭 부스팅 (정확 매칭 0.8, 부분 매칭 0.3)
+        keyword_boosts = self._keyword_match_indices(query)
 
         candidates: list[tuple[float, int]] = []
         for score, idx in zip(scores[0], indices[0], strict=False):
             if idx < 0 or idx >= len(self._chunks):
                 continue
-            boosted = float(score) + name_boost if idx in keyword_indices else float(score)
-            candidates.append((boosted, int(idx)))
+            boost = keyword_boosts.get(int(idx), 0.0)
+            candidates.append((float(score) + boost, int(idx)))
 
         # 키워드 매치인데 FAISS에 안 잡힌 경우 직접 추가
         seen = {idx for _, idx in candidates}
-        for idx in keyword_indices:
+        for idx, boost in keyword_boosts.items():
             if idx not in seen and idx < len(self._chunks):
                 # 벡터 유사도 직접 계산
                 vec = self._index.reconstruct(idx).reshape(1, -1)
                 raw_score = float(np.dot(query_np[0], vec[0]))
-                candidates.append((raw_score + name_boost, idx))
+                candidates.append((raw_score + boost, idx))
 
         # 점수 높은 순 정렬 → top_k
         candidates.sort(key=lambda x: x[0], reverse=True)
