@@ -16,11 +16,15 @@ except Exception:  # pragma: no cover - 선택적 의존성 방어
     default_response_class = JSONResponse
 logger = logging.getLogger("main")
 
+import os
+
+_is_prod = os.getenv("ENV", "local") == "production"
+
 app = FastAPI(
     default_response_class=default_response_class,
-    docs_url="/api/docs",
-    redoc_url="/api/redoc",
-    openapi_url="/api/openapi.json",
+    docs_url=None if _is_prod else "/api/docs",
+    redoc_url=None if _is_prod else "/api/redoc",
+    openapi_url=None if _is_prod else "/api/openapi.json",
 )
 
 app.add_middleware(
