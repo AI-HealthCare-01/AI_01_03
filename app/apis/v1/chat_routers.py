@@ -1,19 +1,23 @@
 """
 POST /api/chat — RAG 기반 의약품 안내 API.
+POST /api/chat/stream — SSE 스트리밍 버전.
 
 Sprint01 통합 계약서 섹션 4 기준.
 LLM: GPT-4o-mini
 """
 
+import json
 import logging
 
 from fastapi import APIRouter
 from fastapi.responses import ORJSONResponse
+from starlette.responses import StreamingResponse
 
 from app.dtos.chat import ChatErrorResponse, ChatRequest, ChatResponse
 from app.services.live_drug_lookup import lookup_drug_async
-from app.services.llm_guide import LLMGuideService
+from app.services.llm_guide import LLMGuideService, _openai_client, _cfg
 from app.services.rag_search import RAGSearchService
+from app.prompts.system_prompt import build_messages, DISCLAIMER
 
 logger = logging.getLogger("chat_router")
 
@@ -118,3 +122,57 @@ async def chat(request: ChatRequest) -> ORJSONResponse:
     )
 
     return ORJSONResponse(content=response_data)
+
+
+async def _build_rag_context(question: str):
+    """RAG 검색 + 실시간 조회 fallback으로 컨텍스트를 준비합니다."""
+    rag = RAGSearchService.get_instance()
+    results = rag.search(question, top_k=3)
+    rag_scores = [r.score for r in results] if results else []
+    rag_context = "\n\n".join(r.chunk for r in results) if results else ""
+    rag_citations = [{"source": r.source, "title": r.name} for r in results] if results else []
+
+    if not _llm_service.check_rag_confidence(rag_scores):
+        live_result = await lookup_drug_async(question)
+        if live_result:
+            rag_context, live_name = live_result
+            rag_citations = [{"source": "식약처 실시간 조회", "title": live_name}]
+        else:
+            rag_context = ""
+            rag_citations = []
+
+    return rag_context, rag_citations
+
+
+@chat_router.post("/chat/stream", summary="의약품 안내 챗봇 (SSE 스트리밍)")
+async def chat_stream(request: ChatRequest) -> StreamingResponse:
+    """RAG → LLM 파이프라인을 SSE 스트리밍으로 반환합니다."""
+    question = request.question
+    logger.info("Chat stream 요청: question=%s", question)
+
+    rag_context, rag_citations = await _build_rag_context(question)
+    messages = build_messages(context=rag_context, question=question)
+
+    async def event_generator():
+        full_text = ""
+        try:
+            stream = await _openai_client.chat.completions.create(
+                model=_cfg.OPENAI_MODEL,
+                messages=messages,
+                max_tokens=_cfg.OPENAI_MAX_TOKENS,
+                temperature=_cfg.OPENAI_TEMPERATURE,
+                stream=True,
+            )
+            async for chunk in stream:
+                delta = chunk.choices[0].delta
+                if delta.content:
+                    full_text += delta.content
+                    yield f"data: {json.dumps({'type': 'content', 'text': delta.content}, ensure_ascii=False)}\n\n"
+
+            sections = _llm_service.parse_sections(full_text)
+            yield f"data: {json.dumps({'type': 'done', 'sections': sections, 'citations': rag_citations, 'disclaimer': DISCLAIMER}, ensure_ascii=False)}\n\n"
+        except Exception as e:
+            logger.exception("Stream LLM 호출 실패")
+            yield f"data: {json.dumps({'type': 'error', 'message': str(e)}, ensure_ascii=False)}\n\n"
+
+    return StreamingResponse(event_generator(), media_type="text/event-stream")
