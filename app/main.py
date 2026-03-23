@@ -35,6 +35,8 @@ app.add_middleware(
         "https://yoyak-med-mentor.vercel.app",
         "https://www.yoyak.site",
         "https://yoyak.site",
+        "https://yoyak.apps.tossmini.com",
+        "https://yoyak.private-apps.tossmini.com",
     ],
     allow_credentials=True,
     allow_methods=["*"],

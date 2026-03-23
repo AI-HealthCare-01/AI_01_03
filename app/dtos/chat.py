@@ -8,11 +8,24 @@ from pydantic import BaseModel, Field
 
 
 # ── 요청 ──────────────────────────────────────
+class MedicationInfo(BaseModel):
+    name: str = Field(..., description="약품명")
+    dosage: str | None = Field(default=None, description="용량")
+    efcy: str | None = Field(default=None, description="효능")
+    se: str | None = Field(default=None, description="부작용")
+    intrc: str | None = Field(default=None, description="상호작용 주의")
+    use_method: str | None = Field(default=None, description="복용법")
+
+
 class ChatRequest(BaseModel):
     question: str = Field(..., min_length=1, max_length=500, description="사용자 질문")
     medication_id: str | None = Field(
         default=None,
         description="약품 식별자 (Vision/OCR 에서 전달, 예: TYLENOL_500)",
+    )
+    medications: list[MedicationInfo] | None = Field(
+        default=None,
+        description="사용자 복용 중인 약 목록 (맞춤형 답변용)",
     )
 
 

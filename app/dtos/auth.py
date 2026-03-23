@@ -26,9 +26,15 @@ class LoginRequest(BaseModel):
 
 class LoginResponse(BaseModel):
     access_token: str
+    refresh_token: str | None = None
 
 
-class TokenRefreshResponse(LoginResponse): ...
+class TokenRefreshRequest(BaseModel):
+    refresh_token: str
+
+
+class TokenRefreshResponse(BaseModel):
+    access_token: str
 
 
 class OAuthUrlResponse(BaseModel):

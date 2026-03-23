@@ -6,6 +6,7 @@ Sprint01 통합 계약서 섹션 4 기준.
 LLM: GPT-4o-mini
 """
 
+import asyncio
 import json
 import logging
 
@@ -40,7 +41,8 @@ async def chat(request: ChatRequest) -> ORJSONResponse:
     """RAG → LLM 파이프라인을 실행하고 구조화된 응답을 반환합니다."""
     question = request.question
     medication_id = request.medication_id
-    logger.info("Chat 요청 수신: question=%s, medication_id=%s", question, medication_id)
+    medications = request.medications
+    logger.info("Chat 요청 수신: question=%s, medication_id=%s, medications=%d개", question, medication_id, len(medications) if medications else 0)
 
     # ── Step 1: FAISS 검색 ──
     rag = RAGSearchService.get_instance()
@@ -70,6 +72,7 @@ async def chat(request: ChatRequest) -> ORJSONResponse:
         raw_answer = await _llm_service.generate_answer(
             context=rag_context,
             question=question,
+            medications=medications,
         )
     except Exception:
         logger.exception("LLM 호출 실패")
@@ -148,26 +151,73 @@ async def _build_rag_context(question: str):
 async def chat_stream(request: ChatRequest) -> StreamingResponse:
     """RAG → LLM 파이프라인을 SSE 스트리밍으로 반환합니다."""
     question = request.question
-    logger.info("Chat stream 요청: question=%s", question)
+    medications = request.medications
+    logger.info("Chat stream 요청: question=%s, medications=%d개", question, len(medications) if medications else 0)
 
     rag_context, rag_citations = await _build_rag_context(question)
-    messages = build_messages(context=rag_context, question=question)
 
     async def event_generator():
-        full_text = ""
+        nonlocal rag_context, rag_citations
+
+        async def _collect_stream(stream) -> str:
+            """스트림을 버퍼에 모아 전체 텍스트 반환."""
+            text = ""
+            async for chunk in stream:
+                if not chunk.choices:
+                    continue
+                delta = chunk.choices[0].delta
+                if delta.content:
+                    text += delta.content
+            return text
+
         try:
-            stream = await _openai_client.chat.completions.create(
+            # 1차: 버퍼링해서 SAFE_FALLBACK 여부 확인
+            messages = build_messages(context=rag_context, question=question, medications=medications)
+            stream1 = await _openai_client.chat.completions.create(
                 model=_cfg.OPENAI_MODEL,
                 messages=messages,
                 max_tokens=_cfg.OPENAI_MAX_TOKENS,
                 temperature=_cfg.OPENAI_TEMPERATURE,
                 stream=True,
             )
-            async for chunk in stream:
-                delta = chunk.choices[0].delta
-                if delta.content:
-                    full_text += delta.content
-                    yield f"data: {json.dumps({'type': 'content', 'text': delta.content}, ensure_ascii=False)}\n\n"
+            full_text = await _collect_stream(stream1)
+
+            # SAFE_FALLBACK이면 fallback 컨텍스트로 교체
+            if _llm_service.contains_out_of_scope_marker(full_text):
+                logger.warning("Stream: LLM out_of_scope 감지 — 실시간 조회 재시도")
+                live_result = await lookup_drug_async(question)
+                if live_result:
+                    rag_context, live_name = live_result
+                    rag_citations = [{"source": "식약처 실시간 조회", "title": live_name}]
+                else:
+                    rag_context = ""
+                    rag_citations = []
+                messages = build_messages(context=rag_context, question=question, medications=medications)
+                full_text = ""
+
+            # 최종 응답 스트리밍
+            if full_text:
+                # 버퍼된 텍스트를 3~5자씩 나눠서 타이핑 효과
+                chunk_size = 4
+                for i in range(0, len(full_text), chunk_size):
+                    piece = full_text[i:i + chunk_size]
+                    yield f"data: {json.dumps({'type': 'content', 'text': piece}, ensure_ascii=False)}\n\n"
+                    await asyncio.sleep(0.02)
+            else:
+                stream2 = await _openai_client.chat.completions.create(
+                    model=_cfg.OPENAI_MODEL,
+                    messages=messages,
+                    max_tokens=_cfg.OPENAI_MAX_TOKENS,
+                    temperature=_cfg.OPENAI_TEMPERATURE,
+                    stream=True,
+                )
+                async for chunk in stream2:
+                    if not chunk.choices:
+                        continue
+                    delta = chunk.choices[0].delta
+                    if delta.content:
+                        full_text += delta.content
+                        yield f"data: {json.dumps({'type': 'content', 'text': delta.content}, ensure_ascii=False)}\n\n"
 
             sections = _llm_service.parse_sections(full_text)
             yield f"data: {json.dumps({'type': 'done', 'sections': sections, 'citations': rag_citations, 'disclaimer': DISCLAIMER}, ensure_ascii=False)}\n\n"

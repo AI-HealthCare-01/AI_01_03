@@ -29,6 +29,7 @@ _cfg = Config()
 # ── LLM 클라이언트 ─────────────────────────────
 _openai_client = AsyncOpenAI(
     api_key=_cfg.OPENAI_API_KEY,
+    base_url=_cfg.OPENAI_BASE_URL or None,
 )
 
 
@@ -97,10 +98,10 @@ class LLMGuideService:
         }
 
         section_map = {
-            "summary": r"(?:\*{0,2}(?:summary|요약)\*{0,2})[:\s]*(.+?)(?=\n\s*\*{0,2}(?:dosage|복용|precautions|주의|tips|팁)|$)",
-            "dosage": r"(?:\*{0,2}(?:dosage|복용(?:법|량)?)\*{0,2})[:\s]*(.+?)(?=\n\s*\*{0,2}(?:precautions|주의|tips|팁)|$)",
-            "precautions": r"(?:\*{0,2}(?:precautions|주의(?:사항)?)\*{0,2})[:\s]*(.+?)(?=\n\s*\*{0,2}(?:tips|팁|보관|추가)|$)",
-            "tips": r"(?:\*{0,2}(?:tips|팁|보관|추가(?:\s*안내)?)\*{0,2})[:\s]*(.+?)$",
+            "summary": r"(?:\*{1,2}(?:summary|요약)\*{1,2})[:\s]*(.+?)(?=\n\s*\*{1,2}(?:dosage|복용|precautions|주의|tips|팁)\*{1,2}|$)",
+            "dosage": r"(?:\*{1,2}(?:dosage|복용(?:법|량)?)\*{1,2})[:\s]*(.+?)(?=\n\s*\*{1,2}(?:precautions|주의|tips|팁)\*{1,2}|$)",
+            "precautions": r"(?:\*{1,2}(?:precautions|주의(?:사항)?)\*{1,2})[:\s]*(.+?)(?=\n\s*\*{1,2}(?:tips|팁|보관|추가)\*{1,2}|$)",
+            "tips": r"(?:\*{1,2}(?:tips|팁|보관|추가(?:\s*안내)?)\*{1,2})[:\s]*(.+?)$",
         }
 
         for key, pattern in section_map.items():
@@ -185,9 +186,9 @@ class LLMGuideService:
         )
         return resp.choices[0].message.content or ""
 
-    async def generate_answer(self, context: str, question: str) -> str:
+    async def generate_answer(self, context: str, question: str, medications: list | None = None) -> str:
         """RAG 컨텍스트 + 질문으로 GPT-4o-mini 답변 생성."""
-        messages = build_messages(context=context, question=question)
+        messages = build_messages(context=context, question=question, medications=medications)
         return await self.call_openai(messages)
 
     async def generate_answer_general(self, question: str) -> str:
