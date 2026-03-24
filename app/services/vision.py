@@ -4,17 +4,18 @@ import asyncio
 import base64
 import io
 import json
-import subprocess
-import sys
-import tempfile
+import os
 import time
-from pathlib import Path
 from typing import Any
 
 from PIL import Image, ImageOps, UnidentifiedImageError
 
 from app.core import config, default_logger
 from app.dtos.vision import VisionCandidate, VisionDetection, VisionIdentifyResponse
+from app.services.redis_task import enqueue_and_wait
+
+# 공유 볼륨 경로 (fastapi ↔ ai-worker 간 이미지 파일 교환)
+SHARED_TMP = "/shared_tmp"
 
 
 class VisionServiceError(Exception):
@@ -97,7 +98,7 @@ class VisionService:
         started_at = time.perf_counter()
         image = self._load_image(image_bytes=image_bytes, content_type=content_type)
         resized = self._resize_image_if_needed(image)
-        boxes = self._detect_bboxes(resized)
+        boxes = await self._detect_bboxes(resized)
 
         if not boxes:
             raise VisionNoPillDetectedError()
@@ -138,7 +139,7 @@ class VisionService:
             raise
         except UnidentifiedImageError as exc:
             raise VisionInvalidImageError from exc
-        except Exception as exc:  # pragma: no cover - PIL 내부 예외 보호
+        except Exception as exc:  # pragma: no cover
             raise VisionInvalidImageError from exc
         return image
 
@@ -152,8 +153,8 @@ class VisionService:
         new_height = max(1, int(image.height * ratio))
         return image.resize((new_width, new_height), Image.Resampling.LANCZOS)
 
-    def _detect_bboxes(self, image: Image.Image) -> list[list[int]]:
-        boxes = self._detect_bboxes_with_yolo(image)
+    async def _detect_bboxes(self, image: Image.Image) -> list[list[int]]:
+        boxes = await self._detect_bboxes_with_yolo(image)
         if boxes:
             return boxes
 
@@ -161,77 +162,43 @@ class VisionService:
             return [[0, 0, image.width, image.height]]
         return []
 
-    def _detect_bboxes_with_yolo(self, image: Image.Image) -> list[list[int]]:
+    async def _detect_bboxes_with_yolo(self, image: Image.Image) -> list[list[int]]:
+        """Redis 큐를 통해 ai-worker의 YOLO 모델로 알약 바운딩 박스를 감지합니다."""
         if config.VISION_BYPASS_YOLO:
             return []
 
-        raw_boxes: list[dict[str, Any]] = []
+        os.makedirs(SHARED_TMP, exist_ok=True)
+        tmp_path = os.path.join(SHARED_TMP, f"yolo_{id(image)}_{int(time.time() * 1000)}.jpg")
         try:
-            with tempfile.NamedTemporaryFile(suffix=".jpg") as tmp:
-                image.save(tmp, format="JPEG", quality=90)
-                tmp.flush()
+            image.save(tmp_path, format="JPEG", quality=90)
+        except Exception as exc:
+            default_logger.warning("[Vision] Failed to save image for YOLO: %s", exc)
+            return []
 
-                child_code = (
-                    "import json,sys\n"
-                    "from ai_worker.vision.detector import predict_boxes\n"
-                    "image_path=sys.argv[1]\n"
-                    "conf=float(sys.argv[2])\n"
-                    "model_path=sys.argv[3]\n"
-                    "try:\n"
-                    "    boxes=predict_boxes(image_path=image_path, conf_thres=conf, model_path=model_path)\n"
-                    "    print(json.dumps({'ok': True, 'boxes': boxes}, ensure_ascii=False))\n"
-                    "except Exception as exc:\n"
-                    "    print(json.dumps({'ok': False, 'error': f'{type(exc).__name__}: {exc}'}, ensure_ascii=False))\n"
-                )
-
-                completed = subprocess.run(
-                    [
-                        sys.executable,
-                        "-c",
-                        child_code,
-                        tmp.name,
-                        str(config.VISION_DETECT_CONF_THRES),
-                        str(config.VISION_DETECT_MODEL_PATH),
-                    ],
-                    capture_output=True,
-                    text=True,
-                    timeout=15,
-                )
-        except subprocess.TimeoutExpired:
-            default_logger.warning("[Vision] YOLO prediction timed out")
+        try:
+            result = await enqueue_and_wait(
+                "vision_detect",
+                {
+                    "image_path": tmp_path,
+                    "conf_thres": config.VISION_DETECT_CONF_THRES,
+                    "model_path": str(config.VISION_DETECT_MODEL_PATH),
+                },
+            )
+        except TimeoutError:
+            default_logger.warning("[Vision] YOLO Redis task timed out")
             return []
         except Exception as exc:
-            default_logger.warning("[Vision] YOLO prediction failed: %s", exc)
+            default_logger.warning("[Vision] YOLO Redis task failed: %s", exc)
             return []
+        finally:
+            try:
+                os.remove(tmp_path)
+            except OSError:
+                pass
 
-        if completed.returncode != 0:
-            default_logger.warning(
-                "[Vision] YOLO subprocess failed (returncode=%s): %s",
-                completed.returncode,
-                (completed.stderr or "").strip()[-400:],
-            )
+        raw_boxes = result.get("boxes", [])
+        if not isinstance(raw_boxes, list):
             return []
-
-        stdout = (completed.stdout or "").strip()
-        if not stdout:
-            default_logger.warning("[Vision] YOLO subprocess returned empty stdout")
-            return []
-
-        try:
-            payload = json.loads(stdout.splitlines()[-1])
-        except Exception:
-            default_logger.warning("[Vision] YOLO subprocess output parse failed: %s", stdout[-400:])
-            return []
-
-        if not isinstance(payload, dict):
-            return []
-        if payload.get("ok") is not True:
-            default_logger.warning("[Vision] YOLO subprocess error: %s", payload.get("error"))
-            return []
-
-        parsed_boxes = payload.get("boxes")
-        if isinstance(parsed_boxes, list):
-            raw_boxes = parsed_boxes
 
         normalized: list[tuple[float, list[int]]] = []
         for raw in raw_boxes:
@@ -257,7 +224,7 @@ class VisionService:
 
     async def _identify_candidates(self, crop: Image.Image) -> list[VisionCandidate]:
         image_base64 = self._encode_image_to_base64(crop)
-        classifier_candidates = self._predict_classifier_candidates(crop)
+        classifier_candidates = await self._predict_classifier_candidates(crop)
 
         openai_candidates: list[VisionCandidate] = []
         if config.OPENAI_API_KEY:
@@ -427,86 +394,46 @@ class VisionService:
             for drug_name, confidence in sorted_candidates[:top_k]
         ]
 
-    def _predict_classifier_candidates(self, crop: Image.Image) -> list[VisionCandidate]:
+    async def _predict_classifier_candidates(self, crop: Image.Image) -> list[VisionCandidate]:
+        """Redis 큐를 통해 ai-worker의 ResNet 분류기로 알약을 식별합니다."""
         if not config.VISION_CLASSIFIER_ENABLED:
             return []
 
-        model_path = Path(config.VISION_CLASSIFIER_MODEL_PATH)
-        if not model_path.exists():
-            default_logger.warning("[Vision] classifier model not found: %s", model_path)
+        model_path = str(config.VISION_CLASSIFIER_MODEL_PATH)
+
+        os.makedirs(SHARED_TMP, exist_ok=True)
+        tmp_path = os.path.join(SHARED_TMP, f"cls_{id(crop)}_{int(time.time() * 1000)}.png")
+        try:
+            crop.save(tmp_path, format="PNG")
+        except Exception as exc:
+            default_logger.warning("[Vision] Failed to save crop for classifier: %s", exc)
             return []
 
-        cls_outputs: list[dict[str, Any]] = []
         try:
-            with tempfile.NamedTemporaryFile(suffix=".png") as tmp:
-                crop.save(tmp, format="PNG")
-                tmp.flush()
-
-                child_code = (
-                    "import json,sys\n"
-                    "from PIL import Image\n"
-                    "from ai_worker.vision.classifier import predict_classes\n"
-                    "image_path=sys.argv[1]\n"
-                    "model_path=sys.argv[2]\n"
-                    "labels_path=sys.argv[3]\n"
-                    "top_k=int(sys.argv[4])\n"
-                    "try:\n"
-                    "    image=Image.open(image_path).convert('RGB')\n"
-                    "    outputs=predict_classes(image=image, model_path=model_path, labels_path=labels_path, top_k=top_k)\n"
-                    "    print(json.dumps({'ok': True, 'outputs': outputs}, ensure_ascii=False))\n"
-                    "except Exception as exc:\n"
-                    "    print(json.dumps({'ok': False, 'error': f'{type(exc).__name__}: {exc}'}, ensure_ascii=False))\n"
-                )
-
-                completed = subprocess.run(
-                    [
-                        sys.executable,
-                        "-c",
-                        child_code,
-                        tmp.name,
-                        str(model_path),
-                        str(config.VISION_CLASSIFIER_LABELS_PATH or ""),
-                        str(max(1, config.VISION_CLASSIFIER_TOP_K)),
-                    ],
-                    capture_output=True,
-                    text=True,
-                    timeout=15,
-                )
-        except subprocess.TimeoutExpired:
-            default_logger.warning("[Vision] classifier prediction timed out")
+            result = await enqueue_and_wait(
+                "vision_classify",
+                {
+                    "image_path": tmp_path,
+                    "model_path": model_path,
+                    "labels_path": str(config.VISION_CLASSIFIER_LABELS_PATH or ""),
+                    "top_k": max(1, config.VISION_CLASSIFIER_TOP_K),
+                },
+            )
+        except TimeoutError:
+            default_logger.warning("[Vision] classifier Redis task timed out")
             return []
         except Exception as exc:
-            default_logger.warning("[Vision] classifier prediction failed: %s", exc)
+            default_logger.warning("[Vision] classifier Redis task failed: %s", exc)
             return []
+        finally:
+            try:
+                os.remove(tmp_path)
+            except OSError:
+                pass
 
-        if completed.returncode != 0:
-            default_logger.warning(
-                "[Vision] classifier subprocess failed (returncode=%s): %s",
-                completed.returncode,
-                (completed.stderr or "").strip()[-400:],
-            )
+        cls_outputs = result.get("predictions", [])
+        if not isinstance(cls_outputs, list):
             return []
-
-        stdout = (completed.stdout or "").strip()
-        if not stdout:
-            default_logger.warning("[Vision] classifier subprocess returned empty stdout")
-            return []
-
-        try:
-            payload = json.loads(stdout.splitlines()[-1])
-        except Exception:
-            default_logger.warning("[Vision] classifier subprocess output parse failed: %s", stdout[-400:])
-            return []
-
-        if not isinstance(payload, dict):
-            return []
-        if payload.get("ok") is not True:
-            default_logger.warning("[Vision] classifier subprocess error: %s", payload.get("error"))
-            return []
-
-        parsed_outputs = payload.get("outputs")
-        if isinstance(parsed_outputs, list):
-            cls_outputs = parsed_outputs
 
         candidates: list[VisionCandidate] = []
         for output in cls_outputs:
