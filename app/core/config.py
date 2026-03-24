@@ -93,6 +93,10 @@ class Config(BaseSettings):
     GOOGLE_CLIENT_SECRET: str = ""
     GOOGLE_REDIRECT_URI: str = "http://localhost:5173/auth/google/callback"
 
+    # Redis (ai-worker 태스크 큐)
+    REDIS_URL: str = "redis://redis:6379/0"
+    VISION_TASK_TIMEOUT: float = 30.0  # Redis 태스크 결과 대기 최대 초
+
     # Vision
     OPENAI_VISION_MODEL: str = "gpt-4o-mini"
     VISION_OPENAI_TIMEOUT_SEC: float = 8.0
