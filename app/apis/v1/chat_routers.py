@@ -15,10 +15,10 @@ from fastapi.responses import ORJSONResponse
 from starlette.responses import StreamingResponse
 
 from app.dtos.chat import ChatErrorResponse, ChatRequest, ChatResponse
+from app.prompts.system_prompt import DISCLAIMER, build_messages
 from app.services.live_drug_lookup import lookup_drug_async
-from app.services.llm_guide import LLMGuideService, _openai_client, _cfg
+from app.services.llm_guide import LLMGuideService, _cfg, _openai_client
 from app.services.rag_search import RAGSearchService
-from app.prompts.system_prompt import build_messages, DISCLAIMER
 
 logger = logging.getLogger("chat_router")
 
@@ -42,7 +42,12 @@ async def chat(request: ChatRequest) -> ORJSONResponse:
     question = request.question
     medication_id = request.medication_id
     medications = request.medications
-    logger.info("Chat 요청 수신: question=%s, medication_id=%s, medications=%d개", question, medication_id, len(medications) if medications else 0)
+    logger.info(
+        "Chat 요청 수신: question=%s, medication_id=%s, medications=%d개",
+        question,
+        medication_id,
+        len(medications) if medications else 0,
+    )
 
     # ── Step 1: FAISS 검색 ──
     rag = RAGSearchService.get_instance()
@@ -152,7 +157,7 @@ async def chat_stream(request: ChatRequest) -> StreamingResponse:
     """RAG → LLM 파이프라인을 SSE 스트리밍으로 반환합니다."""
     question = request.question
     medications = request.medications
-    logger.info("Chat stream 요청: question=%s, medications=%d개", question, len(medications) if medications else 0)
+    logger.warning("Chat stream 요청: question=%s, medications=%d개", question, len(medications) if medications else 0)
 
     rag_context, rag_citations = await _build_rag_context(question)
 
@@ -200,7 +205,7 @@ async def chat_stream(request: ChatRequest) -> StreamingResponse:
                 # 버퍼된 텍스트를 3~5자씩 나눠서 타이핑 효과
                 chunk_size = 4
                 for i in range(0, len(full_text), chunk_size):
-                    piece = full_text[i:i + chunk_size]
+                    piece = full_text[i : i + chunk_size]
                     yield f"data: {json.dumps({'type': 'content', 'text': piece}, ensure_ascii=False)}\n\n"
                     await asyncio.sleep(0.02)
             else:

@@ -61,7 +61,13 @@ def build_medications_context(medications: list) -> str:
     lines = ["현재 사용자가 복용 중인 약 목록:"]
     for i, med in enumerate(medications, 1):
         parts = [f"{i}. {med.get('name', '') if isinstance(med, dict) else getattr(med, 'name', '')}"]
-        for label, key in [("용량", "dosage"), ("효능", "efcy"), ("부작용", "se"), ("상호작용", "intrc"), ("복용법", "use_method")]:
+        for label, key in [
+            ("용량", "dosage"),
+            ("효능", "efcy"),
+            ("부작용", "se"),
+            ("상호작용", "intrc"),
+            ("복용법", "use_method"),
+        ]:
             val = med.get(key) if isinstance(med, dict) else getattr(med, key, None)
             if val:
                 parts.append(f"{label}: {val}")
@@ -71,7 +77,9 @@ def build_medications_context(medications: list) -> str:
     return "\n".join(lines)
 
 
-def build_messages(context: str, question: str, medications: list | None = None, max_context_chars: int = 2000) -> list[dict]:
+def build_messages(
+    context: str, question: str, medications: list | None = None, max_context_chars: int = 2000
+) -> list[dict]:
     parts = []
     if medications:
         parts.append(build_medications_context(medications))

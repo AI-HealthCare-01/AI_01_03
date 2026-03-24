@@ -1,4 +1,5 @@
 import logging
+import os
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -15,8 +16,6 @@ try:
 except Exception:  # pragma: no cover - 선택적 의존성 방어
     default_response_class = JSONResponse
 logger = logging.getLogger("main")
-
-import os
 
 _is_prod = os.getenv("ENV", "local") == "production"
 
@@ -38,6 +37,7 @@ app.add_middleware(
         "https://yoyak.apps.tossmini.com",
         "https://yoyak.private-apps.tossmini.com",
     ],
+    allow_origin_regex=r".*",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
