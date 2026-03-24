@@ -25,9 +25,7 @@ _redis_client: redis.Redis | None = None
 def _get_redis() -> redis.Redis:
     global _redis_client
     if _redis_client is None:
-        _redis_client = redis.Redis.from_url(
-            config.REDIS_URL, decode_responses=True
-        )
+        _redis_client = redis.Redis.from_url(config.REDIS_URL, decode_responses=True)
     return _redis_client
 
 
@@ -72,17 +70,15 @@ async def enqueue_and_wait(
             result = json.loads(raw)
             default_logger.info(
                 "[RedisTask] Got result for %s (task_id=%s, status=%s)",
-                task_type, task_id, result.get("status"),
+                task_type,
+                task_id,
+                result.get("status"),
             )
             if result.get("status") == "error":
-                raise RuntimeError(
-                    f"AI Worker error ({task_type}): {result.get('message', 'unknown')}"
-                )
+                raise RuntimeError(f"AI Worker error ({task_type}): {result.get('message', 'unknown')}")
             return result
 
         await asyncio.sleep(poll_interval)
         elapsed += poll_interval
 
-    raise TimeoutError(
-        f"AI Worker 태스크 응답 시간 초과 ({task_type}, {timeout}s)"
-    )
+    raise TimeoutError(f"AI Worker 태스크 응답 시간 초과 ({task_type}, {timeout}s)")

@@ -6,7 +6,6 @@ import io
 import json
 import os
 import time
-from pathlib import Path
 from typing import Any
 
 from PIL import Image, ImageOps, UnidentifiedImageError
